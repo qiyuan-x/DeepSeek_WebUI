@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>DeepSeek WebUI 启动器</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0F172A;
+            color: white;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none; /* Disable selection globally */
+        }
+        .header {
+            padding: 30px 40px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+            background: linear-gradient(to right, #60A5FA, #A855F7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header p {
+            color: #94A3B8;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0 40px;
+            overflow: hidden;
+        }
+        .status-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+        }
+        .status-label { color: #94A3B8; }
+        .status-value { font-weight: 600; user-select: none; }
+        .status-value.online { color: #22C55E; }
+        .status-value.offline { color: #EF4444; }
+        .status-value.starting { color: #F59E0B; }
+
+        .logs-wrapper {
+            flex: 1;
+            width: 100%;
+            max-width: 600px;
+            margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .logs-header {
+            font-size: 12px;
+            color: #64748B;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .logs {
+            flex: 1;
+            font-family: "JetBrains Mono", "Consolas", monospace;
+            font-size: 12px;
+            color: #CBD5E1;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            overflow-y: auto;
+            user-select: text;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .footer {
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            flex-shrink: 0;
+        }
+        .options {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 13px;
+            color: #94A3B8;
+        }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: white;
+            color: black;
+        }
+        .btn-primary:hover {
+            background: #E2E8F0;
+        }
+        .btn-danger {
+            background: #EF4444;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #DC2626;
+        }
+        .btn-secondary {
+            background: #334155;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #475569;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        /* Custom Scrollbar */
+        .logs::-webkit-scrollbar {
+            width: 8px;
+        }
+        .logs::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .logs::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        .logs::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>DeepSeek WebUI</h1>
+        <p>DeepSeek 桌面启动器 v1.0.0</p>
+    </div>
+
+    <div class="content">
+        <div class="status-box">
+            <div class="status-item">
+                <span class="status-label">后端服务状态</span>
+                <span id="server-status" class="status-value offline">未启动</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">本地访问地址</span>
+                <span class="status-value" style="cursor: pointer; text-decoration: underline;" onclick="window.electronAPI.openExternal('http://localhost:3000')">http://localhost:3000</span>
+            </div>
+        </div>
+
+        <div class="logs-wrapper">
+            <div class="logs-header">
+                <span>运行日志</span>
+                <span id="clear-logs" style="cursor: pointer; text-decoration: underline;">清空日志</span>
+            </div>
+            <div id="log-container" class="logs">等待操作...</div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <div class="options">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="auto-open" checked>
+                启动成功后自动打开网页
+            </label>
+        </div>
+        <div class="btn-group">
+            <button id="stop-btn" class="btn btn-danger" disabled>停止服务</button>
+            <button id="start-btn" class="btn btn-primary">启动服务</button>
+        </div>
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const serverStatus = document.getElementById('server-status');
+        const autoOpenCheckbox = document.getElementById('auto-open');
+        const logContainer = document.getElementById('log-container');
+        const clearLogsBtn = document.getElementById('clear-logs');
+
+        function addLog(msg) {
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        clearLogsBtn.addEventListener('click', () => {
+            logContainer.innerHTML = '';
+        });
+
+        function updateUI(status) {
+            if (status === 'online') {
+                serverStatus.textContent = '运行中';
+                serverStatus.className = 'status-value online';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+            } else if (status === 'starting') {
+                serverStatus.textContent = '正在启动...';
+                serverStatus.className = 'status-value starting';
+                startBtn.disabled = true;
+                stopBtn.disabled = true;
+            } else {
+                serverStatus.textContent = '已停止';
+                serverStatus.className = 'status-value offline';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+
+        startBtn.addEventListener('click', async () => {
+            updateUI('starting');
+            addLog('正在启动后端进程...');
+            const result = await window.electronAPI.startServer({
+                autoOpen: autoOpenCheckbox.checked
+            });
+            if (!result.success) {
+                addLog(`启动失败: ${result.error || '未知错误'}`);
+                updateUI('offline');
+            }
+        });
+
+        stopBtn.addEventListener('click', async () => {
+            addLog('正在停止服务...');
+            const result = await window.electronAPI.stopServer();
+            if (result.success) {
+                addLog('服务已停止。');
+                updateUI('offline');
+            }
+        });
+
+        window.electronAPI.onServerStatus((status) => {
+            if (status.type === 'stdout') {
+                addLog(status.data.trim());
+            } else if (status.type === 'stderr') {
+                addLog(`[ERROR] ${status.data.trim()}`);
+            } else if (status.type === 'ready') {
+                updateUI('online');
+                addLog('服务就绪，端口 3000 已开放。');
+            } else if (status.type === 'exit' || status.type === 'stopped') {
+                updateUI('offline');
+                addLog('后端进程已退出。');
+            }
+        });
+    </script>
+</body>
+</html>
