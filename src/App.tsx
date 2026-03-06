@@ -66,22 +66,33 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [bgImage, setBgImage] = useState<string | null>(null);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
+  const [memoryPrompt, setMemoryPrompt] = useState('');
 
   // Temp Settings for Modal
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'api' | 'theme' | 'prompts' | 'help'>('api');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'api' | 'theme' | 'prompts' | 'memory' | 'help'>('api');
   const [tempSettings, setTempSettings] = useState({
     apiKey: '',
     temperature: 0.7,
     theme: 'light' as 'light' | 'dark',
     bgImage: null as string | null,
-    promptTemplates: [] as PromptTemplate[]
+    promptTemplates: [] as PromptTemplate[],
+    memoryPrompt: ''
   });
 
-  // UI State
   const [expandedReasoning, setExpandedReasoning] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
 
   const currentConv = conversations.find(c => c.id === currentConvId);
+
+  // Handle scroll to track if user is at bottom
+  const handleScroll = useCallback(() => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    const atBottom = scrollHeight - scrollTop - clientHeight < 100;
+    isAtBottomRef.current = atBottom;
+  }, []);
 
   // Load initial data
   useEffect(() => {
@@ -97,6 +108,7 @@ export default function App() {
       if (settings.theme) setTheme(settings.theme);
       if (settings.bgImage) setBgImage(settings.bgImage);
       if (settings.promptTemplates) setPromptTemplates(settings.promptTemplates);
+      if (settings.memoryPrompt) setMemoryPrompt(settings.memoryPrompt);
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
@@ -108,7 +120,8 @@ export default function App() {
       temperature,
       theme,
       bgImage,
-      promptTemplates
+      promptTemplates,
+      memoryPrompt
     });
     setBalance(null);
     setBalanceError(null);
@@ -119,13 +132,15 @@ export default function App() {
   const handleSaveSettings = async () => {
     setApiKey(tempSettings.apiKey);
     setTemperature(tempSettings.temperature);
+    setMemoryPrompt(tempSettings.memoryPrompt);
     
     await api.saveSettings({
       apiKey: tempSettings.apiKey,
       temperature: tempSettings.temperature,
       theme,
       bgImage,
-      promptTemplates
+      promptTemplates,
+      memoryPrompt: tempSettings.memoryPrompt
     });
     
     setIsSettingsOpen(false);
@@ -144,7 +159,8 @@ export default function App() {
           temperature,
           theme,
           bgImage: result,
-          promptTemplates
+          promptTemplates,
+          memoryPrompt
         });
       };
       reader.readAsDataURL(file);
@@ -164,7 +180,9 @@ export default function App() {
   }, [currentConvId, currentConv?.system_prompt]);
 
   useEffect(() => {
-    scrollToBottom();
+    if (isAtBottomRef.current) {
+      scrollToBottom();
+    }
   }, [messages]);
 
   const loadConversations = async () => {
@@ -233,14 +251,19 @@ export default function App() {
 
   const summarizeMemory = async (convId: string, currentMessages: Message[], conv: Conversation) => {
     const summarizedCount = conv.summarized_count || 0;
+    // Summarize every 5 rounds (10 messages)
     const msgsToSummarize = currentMessages.slice(summarizedCount, summarizedCount + 10);
-    if (msgsToSummarize.length === 0) return;
+    if (msgsToSummarize.length < 10) return;
 
-    const prompt = `你是一个对话记忆总结助手。请根据以下现有的记忆和新的对话内容，总结出最新的记忆。
+    const defaultPrompt = `你是一个对话记忆总结助手。请根据以下现有的记忆和新的对话内容，总结出最新的记忆。
 要求：
-1. 提取用户的核心信息、偏好、重要事实。
+1. 提取用户的核心信息、偏好、重要事实、人物关系。
 2. 保持客观和简洁。
-3. 直接返回总结后的记忆文本，不要有任何开场白。
+3. 直接返回总结后的记忆文本，不要有任何开场白。`;
+
+    const customPrompt = memoryPrompt || defaultPrompt;
+
+    const prompt = `${customPrompt}
 
 【现有记忆】
 ${conv.memory || '无'}
@@ -266,12 +289,13 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
       const newMemory = data.choices?.[0]?.message?.content;
       
       if (newMemory) {
+        const newSummarizedCount = summarizedCount + msgsToSummarize.length;
         await api.updateConversation(convId, { 
           memory: newMemory,
-          summarized_count: summarizedCount + msgsToSummarize.length
+          summarized_count: newSummarizedCount
         });
         setConversations(prev => prev.map(c => 
-          c.id === convId ? { ...c, memory: newMemory, summarized_count: summarizedCount + msgsToSummarize.length } : c
+          c.id === convId ? { ...c, memory: newMemory, summarized_count: newSummarizedCount } : c
         ));
       }
     } catch (error) {
@@ -318,9 +342,22 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
 
     const controller = new AbortController();
     setAbortController(controller);
+    const startTime = Date.now();
+
+    let assistantMsg: Message = {
+      id: crypto.randomUUID(),
+      conversation_id: convId!,
+      role: 'assistant',
+      content: '',
+      reasoning_content: '',
+      created_at: new Date().toISOString(),
+    };
+    let fullContent = '';
+    let fullReasoning = '';
 
     try {
       await api.saveMessage(userMsg);
+      await api.saveMessage(assistantMsg);
 
       let chatHistory = messages.map(m => ({ role: m.role, content: m.content }));
       if (chatHistory.length > 20) {
@@ -331,6 +368,8 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
       if (currentConv?.memory) {
         sysPrompt += `\n\n【历史记忆】\n${currentConv.memory}`;
       }
+
+      setMessages(prev => [...prev, assistantMsg]);
 
       const response = await api.chat({
         messages: [
@@ -343,7 +382,7 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
         stream: true,
         apiKey: apiKey,
         stream_options: { include_usage: true }
-      } as any);
+      }, controller.signal);
 
       if (!response.ok) {
         const err = await response.json();
@@ -352,19 +391,7 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      let assistantMsg: Message = {
-        id: crypto.randomUUID(),
-        conversation_id: convId!,
-        role: 'assistant',
-        content: '',
-        reasoning_content: '',
-        created_at: new Date().toISOString(),
-      };
 
-      setMessages(prev => [...prev, assistantMsg]);
-
-      let fullContent = '';
-      let fullReasoning = '';
       let isReasoning = false;
       let usage: any = null;
 
@@ -421,6 +448,8 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
       }
 
       const finalCost = usage ? calculateCost(currentConv?.model || model, usage.prompt_tokens, usage.completion_tokens) : 0;
+      const endTime = Date.now();
+      const responseTime = (endTime - startTime) / 1000;
 
       // Final save
       await api.saveMessage({
@@ -428,24 +457,49 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
         content: fullContent,
         reasoning_content: fullReasoning,
         tokens: usage ? usage.total_tokens : 0, 
-        cost: finalCost
+        cost: finalCost,
+        response_time: responseTime
       });
 
       if (usage) {
         setMessages(prev => prev.map(m => 
-          m.id === assistantMsg.id ? { ...m, tokens: usage.total_tokens, cost: finalCost } : m
+          m.id === assistantMsg.id ? { ...m, tokens: usage.total_tokens, cost: finalCost, response_time: responseTime } : m
+        ));
+      } else {
+        setMessages(prev => prev.map(m => 
+          m.id === assistantMsg.id ? { ...m, response_time: responseTime } : m
         ));
       }
 
       // Trigger memory summarization if needed
       const finalMessages = [...messages, userMsg, { ...assistantMsg, content: fullContent }];
       const summarizedCount = currentConv?.summarized_count || 0;
-      if (finalMessages.length - summarizedCount > 20) {
+      if (finalMessages.length - summarizedCount >= 10) {
         summarizeMemory(convId!, finalMessages, currentConv || { id: convId!, title: '', system_prompt: '', model: '', temperature: 0, created_at: '', updated_at: '' });
       }
 
     } catch (error: any) {
-      if (error.name === 'AbortError') return;
+      if (error.name === 'AbortError') {
+        const endTime = Date.now();
+        const responseTime = (endTime - startTime) / 1000;
+        const finalContent = fullContent + '\n\n[用户取消输出]';
+        
+        await api.saveMessage({
+          ...assistantMsg,
+          content: finalContent,
+          reasoning_content: fullReasoning,
+          tokens: 0, 
+          cost: 0,
+          response_time: responseTime
+        });
+        
+        setMessages(prev => prev.map(m => 
+          m.id === assistantMsg.id ? { ...m, content: finalContent, response_time: responseTime } : m
+        ));
+        return;
+      }
+      setMessages(prev => prev.filter(m => m.id !== assistantMsg.id));
+      api.deleteMessage(assistantMsg.id).catch(console.error);
       alert(error.message);
     } finally {
       setIsLoading(false);
@@ -820,7 +874,11 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto">
+        <div 
+          ref={chatContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto"
+        >
           <div className="max-w-3xl mx-auto py-6 px-4 space-y-8">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">
@@ -895,10 +953,11 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
                 </div>
                 
                 {/* Meta Info */}
-                {(msg.tokens > 0 || msg.cost > 0) && (
+                {(msg.tokens > 0 || msg.cost > 0 || msg.response_time > 0) && (
                   <div className="flex items-center gap-3 px-1 text-[10px] font-bold text-[#9CA3AF] uppercase tracking-tighter">
                     {msg.tokens > 0 ? <span>{msg.tokens} Tokens</span> : null}
                     {msg.cost > 0 ? <span>￥{msg.cost.toFixed(4)}</span> : null}
+                    {msg.response_time > 0 ? <span>{msg.response_time.toFixed(1)}s</span> : null}
                   </div>
                 )}
               </div>
@@ -1000,6 +1059,7 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
                       { id: 'api', label: 'API & 模型', icon: Send },
                       { id: 'theme', label: '主题 & 界面', icon: Layout },
                       { id: 'prompts', label: '人物模板', icon: User },
+                      { id: 'memory', label: '记忆设置', icon: Brain },
                       { id: 'help', label: '帮助中心', icon: BookOpen },
                     ].map(tab => (
                       <button
@@ -1296,6 +1356,28 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
                               </div>
                             ))
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeSettingsTab === 'memory' && (
+                      <div className="space-y-6">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">记忆提取提示词</label>
+                        </div>
+                        <div className="space-y-4">
+                          <p className={cn("text-xs", theme === 'dark' ? "text-gray-400" : "text-[#6B7280]")}>
+                            设置在自动总结记忆时，AI应该着重提取哪些信息（例如：发生了哪些事情，出现了哪些人物，人物之间的关系等）。留空则使用默认提示词。
+                          </p>
+                          <textarea
+                            value={tempSettings.memoryPrompt}
+                            onChange={e => setTempSettings(prev => ({ ...prev, memoryPrompt: e.target.value }))}
+                            placeholder="例如：请着重记住发生了哪些事情，出现了哪些人物，人物之间的关系..."
+                            className={cn(
+                              "w-full rounded-xl px-4 py-3 text-sm outline-none min-h-[150px] resize-none transition-colors border",
+                              theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] border-[#E5E7EB] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+                            )}
+                          />
                         </div>
                       </div>
                     )}

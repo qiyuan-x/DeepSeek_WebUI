@@ -49,6 +49,17 @@ export const api = {
     return res.json();
   },
 
+  async deleteMessage(id: string) {
+    const res = await fetch(`/api/messages/${id}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || '删除失败');
+    }
+    return res.json();
+  },
+
   async getBalance(apiKey?: string) {
     const res = await fetch("/api/balance", {
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
@@ -76,11 +87,13 @@ export const api = {
     temperature: number;
     stream: boolean;
     apiKey?: string;
-  }) {
+    stream_options?: any;
+  }, signal?: AbortSignal) {
     return fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
+      signal,
     });
   },
 };

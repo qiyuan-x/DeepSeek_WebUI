@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import dotenv from "dotenv";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -21,8 +22,15 @@ const CONFIG_DIR = path.join(DATA_DIR, "config");
 });
 
 // JSON Database logic
-const CONV_FILE = path.join(DB_DIR, "conversations.json");
-const MSG_FILE = path.join(DB_DIR, "messages.json");
+const INDEX_FILE = path.join(DB_DIR, "index.json");
+
+function sanitizeFolderName(name: string) {
+  return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'Untitled';
+}
+
+function getConvDir(title: string, id: string) {
+  return path.join(DB_DIR, `${sanitizeFolderName(title)}_${id.slice(0, 8)}`);
+}
 
 function readJson(file: string, defaultVal: any = []) {
   if (!fs.existsSync(file)) return defaultVal;
@@ -38,9 +46,8 @@ function writeJson(file: string, data: any) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
 }
 
-// Initialize files if they don't exist
-if (!fs.existsSync(CONV_FILE)) writeJson(CONV_FILE, []);
-if (!fs.existsSync(MSG_FILE)) writeJson(MSG_FILE, []);
+// Initialize index if it doesn't exist
+if (!fs.existsSync(INDEX_FILE)) writeJson(INDEX_FILE, []);
 
 async function startServer() {
   const app = express();
@@ -75,55 +82,108 @@ async function startServer() {
 
   // API Routes
   app.get("/api/conversations", (req, res) => {
-    const convs = readJson(CONV_FILE);
+    const index = readJson(INDEX_FILE);
+    const convs = index.map((item: any) => {
+      const settingsFile = path.join(item.path, "settings.json");
+      return readJson(settingsFile, null);
+    }).filter((c: any) => c !== null);
+    
     convs.sort((a: any, b: any) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     res.json(convs);
   });
 
   app.get("/api/conversations/:id/messages", (req, res) => {
-    const msgs = readJson(MSG_FILE);
-    const filtered = msgs.filter((m: any) => m.conversation_id === req.params.id);
-    filtered.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    res.json(filtered);
+    const index = readJson(INDEX_FILE);
+    const item = index.find((i: any) => i.id === req.params.id);
+    if (!item) return res.json([]);
+    
+    const msgFile = path.join(item.path, "messages.json");
+    const msgs = readJson(msgFile);
+    msgs.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    res.json(msgs);
   });
 
   app.post("/api/conversations", (req, res) => {
-    const convs = readJson(CONV_FILE);
+    const index = readJson(INDEX_FILE);
+    const id = req.body.id || crypto.randomUUID();
+    const title = req.body.title || 'New Chat';
+    const convDir = getConvDir(title, id);
+    
+    if (!fs.existsSync(convDir)) {
+      fs.mkdirSync(convDir, { recursive: true });
+    }
+
     const newConv = {
       ...req.body,
+      id,
+      title,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
-    convs.push(newConv);
-    writeJson(CONV_FILE, convs);
-    res.json({ success: true });
+
+    writeJson(path.join(convDir, "settings.json"), newConv);
+    writeJson(path.join(convDir, "messages.json"), []);
+    writeJson(path.join(convDir, "memory_history.json"), []);
+
+    index.push({ id, title, path: convDir });
+    writeJson(INDEX_FILE, index);
+    
+    res.json({ success: true, conversation: newConv });
   });
 
   app.patch("/api/conversations/:id", (req, res) => {
-    const convs = readJson(CONV_FILE);
-    const idx = convs.findIndex((c: any) => c.id === req.params.id);
-    if (idx !== -1) {
-      if (req.body.title !== undefined) convs[idx].title = req.body.title;
-      if (req.body.system_prompt !== undefined) convs[idx].system_prompt = req.body.system_prompt;
-      if (req.body.model !== undefined) convs[idx].model = req.body.model;
-      if (req.body.memory !== undefined) convs[idx].memory = req.body.memory;
-      if (req.body.summarized_count !== undefined) convs[idx].summarized_count = req.body.summarized_count;
-      convs[idx].updated_at = new Date().toISOString();
-      writeJson(CONV_FILE, convs);
+    const index = readJson(INDEX_FILE);
+    const idx = index.findIndex((i: any) => i.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: "Not found" });
+
+    const item = index[idx];
+    const settingsFile = path.join(item.path, "settings.json");
+    const conv = readJson(settingsFile, {});
+
+    if (req.body.title !== undefined && req.body.title !== conv.title) {
+      const newTitle = req.body.title;
+      const newDir = getConvDir(newTitle, req.params.id);
+      if (fs.existsSync(item.path)) {
+        fs.renameSync(item.path, newDir);
+      }
+      item.path = newDir;
+      item.title = newTitle;
+      conv.title = newTitle;
     }
+
+    if (req.body.system_prompt !== undefined) conv.system_prompt = req.body.system_prompt;
+    if (req.body.model !== undefined) conv.model = req.body.model;
+    if (req.body.memory !== undefined) {
+      conv.memory = req.body.memory;
+      // Save to memory history
+      const historyFile = path.join(item.path, "memory_history.json");
+      const history = readJson(historyFile);
+      history.push({
+        memory: req.body.memory,
+        updated_at: new Date().toISOString()
+      });
+      writeJson(historyFile, history);
+    }
+    if (req.body.summarized_count !== undefined) conv.summarized_count = req.body.summarized_count;
+    
+    conv.updated_at = new Date().toISOString();
+    writeJson(path.join(item.path, "settings.json"), conv);
+    writeJson(INDEX_FILE, index);
+    
     res.json({ success: true });
   });
 
   app.delete("/api/conversations/:id", (req, res) => {
     try {
-      let convs = readJson(CONV_FILE);
-      convs = convs.filter((c: any) => c.id !== req.params.id);
-      writeJson(CONV_FILE, convs);
-
-      let msgs = readJson(MSG_FILE);
-      msgs = msgs.filter((m: any) => m.conversation_id !== req.params.id);
-      writeJson(MSG_FILE, msgs);
-
+      let index = readJson(INDEX_FILE);
+      const item = index.find((i: any) => i.id === req.params.id);
+      if (item) {
+        if (fs.existsSync(item.path)) {
+          fs.rmSync(item.path, { recursive: true, force: true });
+        }
+        index = index.filter((i: any) => i.id !== req.params.id);
+        writeJson(INDEX_FILE, index);
+      }
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete Error:", error);
@@ -132,31 +192,71 @@ async function startServer() {
   });
 
   app.post("/api/messages", (req, res) => {
-    const { id, conversation_id, role, content, reasoning_content, tokens, cost } = req.body;
+    const { id, conversation_id, role, content, reasoning_content, tokens, cost, response_time } = req.body;
     
-    const msgs = readJson(MSG_FILE);
-    const newMsg = {
-      id,
-      conversation_id,
-      role,
-      content,
-      reasoning_content: reasoning_content || null,
-      tokens: tokens || 0,
-      cost: cost || 0,
-      created_at: new Date().toISOString()
-    };
-    msgs.push(newMsg);
-    writeJson(MSG_FILE, msgs);
+    const index = readJson(INDEX_FILE);
+    const item = index.find((i: any) => i.id === conversation_id);
+    if (!item) return res.status(404).json({ error: "Conversation not found" });
+
+    const msgFile = path.join(item.path, "messages.json");
+    const msgs = readJson(msgFile);
+    const idx = msgs.findIndex((m: any) => m.id === id);
+    
+    if (idx !== -1) {
+      msgs[idx] = {
+        ...msgs[idx],
+        content,
+        reasoning_content: reasoning_content || msgs[idx].reasoning_content,
+        tokens: tokens || msgs[idx].tokens,
+        cost: cost || msgs[idx].cost,
+        response_time: response_time || msgs[idx].response_time
+      };
+    } else {
+      const newMsg = {
+        id,
+        conversation_id,
+        role,
+        content,
+        reasoning_content: reasoning_content || null,
+        tokens: tokens || 0,
+        cost: cost || 0,
+        response_time: response_time || 0,
+        created_at: new Date().toISOString()
+      };
+      msgs.push(newMsg);
+    }
+    writeJson(msgFile, msgs);
     
     // Update conversation timestamp
-    const convs = readJson(CONV_FILE);
-    const idx = convs.findIndex((c: any) => c.id === conversation_id);
-    if (idx !== -1) {
-      convs[idx].updated_at = new Date().toISOString();
-      writeJson(CONV_FILE, convs);
-    }
+    const settingsFile = path.join(item.path, "settings.json");
+    const conv = readJson(settingsFile, {});
+    conv.updated_at = new Date().toISOString();
+    writeJson(settingsFile, conv);
     
     res.json({ success: true });
+  });
+
+  app.delete("/api/messages/:id", (req, res) => {
+    try {
+      const index = readJson(INDEX_FILE);
+      // We need to find which conversation this message belongs to.
+      // For simplicity, we can iterate through all conversations or pass the convId from client.
+      // Let's iterate for now, but in a real app, passing convId is better.
+      for (const item of index) {
+        const msgFile = path.join(item.path, "messages.json");
+        let msgs = readJson(msgFile);
+        const originalLen = msgs.length;
+        msgs = msgs.filter((m: any) => m.id !== req.params.id);
+        if (msgs.length !== originalLen) {
+          writeJson(msgFile, msgs);
+          break;
+        }
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete Message Error:", error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   app.get("/api/balance", async (req, res) => {

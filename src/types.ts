@@ -31,6 +31,7 @@ export interface Message {
   reasoning_content?: string;
   tokens?: number;
   cost?: number;
+  response_time?: number;
   created_at?: string;
 }
 
