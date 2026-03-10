@@ -1,6 +1,12 @@
 import { Message, Conversation } from "../types";
 
 export const api = {
+  async getMemories(conversationName?: string): Promise<any[]> {
+    const url = conversationName ? `/api/memories?conversationName=${encodeURIComponent(conversationName)}` : "/api/memories";
+    const res = await fetch(url);
+    return res.json();
+  },
+
   async getConversations(): Promise<Conversation[]> {
     const res = await fetch("/api/conversations");
     return res.json();
@@ -88,6 +94,9 @@ export const api = {
     stream: boolean;
     apiKey?: string;
     stream_options?: any;
+    useTieredMemory?: boolean;
+    conversationId?: string;
+    conversationName?: string;
   }, signal?: AbortSignal) {
     return fetch("/api/chat", {
       method: "POST",

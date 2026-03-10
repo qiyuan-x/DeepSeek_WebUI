@@ -43,7 +43,8 @@ export default function App() {
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
-  const [draftMemory, setDraftMemory] = useState("");
+  const [memoryTab, setMemoryTab] = useState<'profile' | 'summary' | 'other'>('profile');
+  const [memories, setMemories] = useState<any[]>([]);
 
   // Settings
   const [apiKey, setApiKey] = useState('');
@@ -58,6 +59,10 @@ export default function App() {
     }
   };
   const [systemPrompt, setSystemPrompt] = useState('');
+  const systemPromptRef = useRef(systemPrompt);
+  useEffect(() => {
+    systemPromptRef.current = systemPrompt;
+  }, [systemPrompt]);
   const [isEditingSystemPrompt, setIsEditingSystemPrompt] = useState(false);
   const [draftSystemPrompt, setDraftSystemPrompt] = useState("");
   const [temperature, setTemperature] = useState(0.7);
@@ -66,7 +71,7 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [bgImage, setBgImage] = useState<string | null>(null);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
-  const [memoryPrompt, setMemoryPrompt] = useState('');
+  const [useTieredMemory, setUseTieredMemory] = useState(true);
 
   // Temp Settings for Modal
   const [activeSettingsTab, setActiveSettingsTab] = useState<'api' | 'theme' | 'prompts' | 'memory' | 'help'>('api');
@@ -76,7 +81,7 @@ export default function App() {
     theme: 'light' as 'light' | 'dark',
     bgImage: null as string | null,
     promptTemplates: [] as PromptTemplate[],
-    memoryPrompt: ''
+    useTieredMemory: true
   });
 
   const [expandedReasoning, setExpandedReasoning] = useState<Record<string, boolean>>({});
@@ -108,7 +113,7 @@ export default function App() {
       if (settings.theme) setTheme(settings.theme);
       if (settings.bgImage) setBgImage(settings.bgImage);
       if (settings.promptTemplates) setPromptTemplates(settings.promptTemplates);
-      if (settings.memoryPrompt) setMemoryPrompt(settings.memoryPrompt);
+      if (settings.useTieredMemory !== undefined) setUseTieredMemory(settings.useTieredMemory);
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
@@ -121,18 +126,34 @@ export default function App() {
       theme,
       bgImage,
       promptTemplates,
-      memoryPrompt
+      useTieredMemory
     });
     setBalance(null);
     setBalanceError(null);
     setActiveSettingsTab('api');
     setIsSettingsOpen(true);
+    setIsSidebarOpen(false);
+  };
+
+  const handleOpenMemory = async () => {
+    setIsMemoryOpen(true);
+    try {
+      if (!currentConvId) {
+        setMemories([]);
+        return;
+      }
+      const currentConv = conversations.find(c => c.id === currentConvId);
+      const data = await api.getMemories(currentConv?.title);
+      setMemories(data);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleSaveSettings = async () => {
     setApiKey(tempSettings.apiKey);
     setTemperature(tempSettings.temperature);
-    setMemoryPrompt(tempSettings.memoryPrompt);
+    setUseTieredMemory(tempSettings.useTieredMemory);
     
     await api.saveSettings({
       apiKey: tempSettings.apiKey,
@@ -140,7 +161,7 @@ export default function App() {
       theme,
       bgImage,
       promptTemplates,
-      memoryPrompt: tempSettings.memoryPrompt
+      useTieredMemory: tempSettings.useTieredMemory
     });
     
     setIsSettingsOpen(false);
@@ -160,7 +181,7 @@ export default function App() {
           theme,
           bgImage: result,
           promptTemplates,
-          memoryPrompt
+          useTieredMemory
         });
       };
       reader.readAsDataURL(file);
@@ -174,10 +195,9 @@ export default function App() {
       setIsEditingSystemPrompt(false);
     } else {
       setMessages([]);
-      setSystemPrompt('');
       setIsEditingSystemPrompt(false);
     }
-  }, [currentConvId, currentConv?.system_prompt]);
+  }, [currentConvId]);
 
   useEffect(() => {
     if (isAtBottomRef.current) {
@@ -203,6 +223,7 @@ export default function App() {
     setCurrentConvId(null);
     setMessages([]);
     setSystemPrompt('');
+    setDraftSystemPrompt('');
     setIsEditingSystemPrompt(false);
     setIsSidebarOpen(window.innerWidth > 1024);
   };
@@ -213,6 +234,8 @@ export default function App() {
       if (currentConvId === id) {
         setCurrentConvId(null);
         setMessages([]);
+        setSystemPrompt('');
+        setDraftSystemPrompt('');
       }
       await loadConversations();
     } catch (error: any) {
@@ -235,6 +258,7 @@ export default function App() {
 
   const handleUpdateSystemPrompt = async (newPrompt: string) => {
     setSystemPrompt(newPrompt);
+    systemPromptRef.current = newPrompt;
     if (currentConvId) {
       try {
         await api.updateConversation(currentConvId, { system_prompt: newPrompt });
@@ -249,59 +273,6 @@ export default function App() {
     setIsEditingSystemPrompt(false);
   };
 
-  const summarizeMemory = async (convId: string, currentMessages: Message[], conv: Conversation) => {
-    const summarizedCount = conv.summarized_count || 0;
-    // Summarize every 5 rounds (10 messages)
-    const msgsToSummarize = currentMessages.slice(summarizedCount, summarizedCount + 10);
-    if (msgsToSummarize.length < 10) return;
-
-    const defaultPrompt = `你是一个对话记忆总结助手。请根据以下现有的记忆和新的对话内容，总结出最新的记忆。
-要求：
-1. 提取用户的核心信息、偏好、重要事实、人物关系。
-2. 保持客观和简洁。
-3. 直接返回总结后的记忆文本，不要有任何开场白。`;
-
-    const customPrompt = memoryPrompt || defaultPrompt;
-
-    const prompt = `${customPrompt}
-
-【现有记忆】
-${conv.memory || '无'}
-
-【新对话内容】
-${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}`).join('\n')}
-`;
-
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: prompt }],
-          model: 'deepseek-chat',
-          temperature: 0.3,
-          stream: false,
-          apiKey: apiKey || process.env.DEEPSEEK_API_KEY
-        })
-      });
-
-      const data = await response.json();
-      const newMemory = data.choices?.[0]?.message?.content;
-      
-      if (newMemory) {
-        const newSummarizedCount = summarizedCount + msgsToSummarize.length;
-        await api.updateConversation(convId, { 
-          memory: newMemory,
-          summarized_count: newSummarizedCount
-        });
-        setConversations(prev => prev.map(c => 
-          c.id === convId ? { ...c, memory: newMemory, summarized_count: newSummarizedCount } : c
-        ));
-      }
-    } catch (error) {
-      console.error("Failed to summarize memory:", error);
-    }
-  };
 
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -311,16 +282,24 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
       return;
     }
 
+    let sysPrompt = systemPromptRef.current;
+    
+    if (isEditingSystemPrompt) {
+      sysPrompt = draftSystemPrompt;
+      handleUpdateSystemPrompt(draftSystemPrompt);
+    }
+
     let convId = currentConvId;
+    let convTitle = currentConv?.title;
     const isFirstMessage = !convId;
 
     if (isFirstMessage) {
       convId = crypto.randomUUID();
-      const title = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+      convTitle = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
       await api.createConversation({
         id: convId,
-        title,
-        system_prompt: systemPrompt,
+        title: convTitle,
+        system_prompt: sysPrompt,
         model,
         temperature,
       });
@@ -339,6 +318,8 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
+    isAtBottomRef.current = true;
+    setTimeout(() => scrollToBottom(), 50);
 
     const controller = new AbortController();
     setAbortController(controller);
@@ -359,34 +340,49 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
       await api.saveMessage(userMsg);
       await api.saveMessage(assistantMsg);
 
-      let chatHistory = messages.map(m => ({ role: m.role, content: m.content }));
+      let chatHistory = messages.map(m => ({ 
+        role: m.role, 
+        content: m.content.trim() === '' ? '(未完成的回复)' : m.content 
+      }));
+
       if (chatHistory.length > 20) {
         chatHistory = chatHistory.slice(-20);
       }
 
-      let sysPrompt = (currentConvId ? currentConv?.system_prompt : systemPrompt) || '';
-      if (currentConv?.memory) {
-        sysPrompt += `\n\n【历史记忆】\n${currentConv.memory}`;
+      let finalMessages = [
+        ...(sysPrompt ? [{ role: 'system', content: sysPrompt }] : []),
+        ...chatHistory,
+        { role: 'user', content: userMsg.content }
+      ];
+
+      // Merge consecutive messages with the same role
+      const mergedFinal: any[] = [];
+      for (const msg of finalMessages) {
+        if (mergedFinal.length > 0 && mergedFinal[mergedFinal.length - 1].role === msg.role) {
+          mergedFinal[mergedFinal.length - 1].content += '\n\n' + msg.content;
+        } else {
+          mergedFinal.push({ ...msg });
+        }
       }
 
       setMessages(prev => [...prev, assistantMsg]);
 
       const response = await api.chat({
-        messages: [
-          { role: 'system', content: sysPrompt },
-          ...chatHistory,
-          { role: 'user', content: userMsg.content }
-        ],
+        messages: mergedFinal,
         model: model, // Always use the current toggle state
         temperature: currentConv?.temperature || temperature,
         stream: true,
         apiKey: apiKey,
-        stream_options: { include_usage: true }
+        stream_options: { include_usage: true },
+        useTieredMemory: useTieredMemory,
+        conversationId: convId,
+        conversationName: convTitle || "未命名对话"
       }, controller.signal);
 
       if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.error?.message || '连接 DeepSeek 失败');
+        const errMsg = typeof err.error === 'string' ? err.error : err.error?.message;
+        throw new Error(errMsg || '连接 DeepSeek 失败');
       }
 
       const reader = response.body?.getReader();
@@ -469,13 +465,6 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
         setMessages(prev => prev.map(m => 
           m.id === assistantMsg.id ? { ...m, response_time: responseTime } : m
         ));
-      }
-
-      // Trigger memory summarization if needed
-      const finalMessages = [...messages, userMsg, { ...assistantMsg, content: fullContent }];
-      const summarizedCount = currentConv?.summarized_count || 0;
-      if (finalMessages.length - summarizedCount >= 10) {
-        summarizeMemory(convId!, finalMessages, currentConv || { id: convId!, title: '', system_prompt: '', model: '', temperature: 0, created_at: '', updated_at: '' });
       }
 
     } catch (error: any) {
@@ -747,6 +736,17 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
           </div>
 
           <div className="flex items-center gap-4">
+            <button
+              onClick={handleOpenMemory}
+              className={cn(
+                "p-2 rounded-lg transition-colors flex items-center gap-2",
+                theme === 'dark' ? "text-gray-400 hover:text-purple-400 hover:bg-purple-500/10" : "text-gray-500 hover:text-purple-600 hover:bg-purple-50"
+              )}
+              title="查看全局记忆"
+            >
+              <Brain size={18} />
+              <span className="text-xs font-medium hidden sm:inline">记忆库</span>
+            </button>
             <div className={cn(
               "hidden sm:flex items-center gap-2 px-3 py-1 rounded-full transition-colors",
               apiKey ? (theme === 'dark' ? "bg-emerald-500/10" : "bg-emerald-50") : (theme === 'dark' ? "bg-red-500/10" : "bg-red-50")
@@ -782,30 +782,15 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
                     "text-xs truncate max-w-[400px]",
                     theme === 'dark' ? "text-gray-300" : "text-[#4B5563]"
                   )}>
-                    {currentConv?.system_prompt || systemPrompt || '未设定'}
+                    {systemPrompt || '未设定'}
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-4">
-                {currentConvId && (
-                  <button 
-                    onClick={() => {
-                      setDraftMemory(currentConv?.memory || '');
-                      setIsMemoryOpen(true);
-                    }}
-                    className={cn(
-                      "flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider hover:underline",
-                      currentConv?.memory ? "text-purple-500" : (theme === 'dark' ? "text-gray-400" : "text-gray-500")
-                    )}
-                  >
-                    <Brain size={12} />
-                    记忆区
-                  </button>
-                )}
                 <button 
                   onClick={() => {
                     if (!isEditingSystemPrompt) {
-                      setDraftSystemPrompt(currentConv?.system_prompt || systemPrompt || "");
+                      setDraftSystemPrompt(systemPrompt || "");
                     }
                     setIsEditingSystemPrompt(!isEditingSystemPrompt);
                   }}
@@ -814,7 +799,7 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
                     theme === 'dark' ? "text-white" : "text-[#1A1A1A]"
                   )}
                 >
-                  {isEditingSystemPrompt ? '收起' : (currentConv?.system_prompt || systemPrompt ? '修改' : '点击设定')}
+                  {isEditingSystemPrompt ? '收起' : (systemPrompt ? '修改' : '点击设定')}
                 </button>
               </div>
             </div>
@@ -1019,6 +1004,159 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
             DeepSeek 可能会犯错。请核查重要信息。
           </p>
         </div>
+
+        {/* Memory Modal */}
+        <AnimatePresence>
+          {isMemoryOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className={cn(
+                  "w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]",
+                  theme === 'dark' ? "bg-[#1A1A1A] border border-white/10" : "bg-white border border-[#E5E7EB]"
+                )}
+              >
+                <div className={cn(
+                  "p-4 border-b flex justify-between items-center",
+                  theme === 'dark' ? "border-white/10" : "border-[#E5E7EB]"
+                )}>
+                  <h3 className={cn(
+                    "text-lg font-semibold flex items-center gap-2",
+                    theme === 'dark' ? "text-white" : "text-[#1A1A1A]"
+                  )}>
+                    <Brain className="text-purple-500" size={20} />
+                    当前对话记忆 (PowerMem)
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const formattedData = {
+                          userProfile: memories.filter(m => m.entity_key.includes('用户画像')),
+                          conversationSummaries: memories.filter(m => m.entity_key.includes('对话总结')),
+                          otherMemories: memories.filter(m => !m.entity_key.includes('用户画像') && !m.entity_key.includes('对话总结'))
+                        };
+                        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(formattedData, null, 2));
+                        const downloadAnchorNode = document.createElement('a');
+                        downloadAnchorNode.setAttribute("href", dataStr);
+                        downloadAnchorNode.setAttribute("download", "memories.json");
+                        document.body.appendChild(downloadAnchorNode);
+                        downloadAnchorNode.click();
+                        downloadAnchorNode.remove();
+                      }}
+                      className={cn(
+                        "p-2 rounded-lg transition-colors text-sm flex items-center gap-1",
+                        theme === 'dark' ? "text-purple-400 hover:bg-purple-500/10" : "text-purple-600 hover:bg-purple-50"
+                      )}
+                      title="导出为JSON文件"
+                    >
+                      <ExternalLink size={16} />
+                      <span className="hidden sm:inline">导出JSON</span>
+                    </button>
+                    <button 
+                      onClick={() => setIsMemoryOpen(false)} 
+                      className={cn(
+                        "p-2 rounded-lg transition-colors",
+                        theme === 'dark' ? "hover:bg-white/10 text-gray-400" : "hover:bg-gray-100 text-gray-500"
+                      )}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                </div>
+                <div className={cn(
+                  "border-b flex",
+                  theme === 'dark' ? "border-white/10" : "border-[#E5E7EB]"
+                )}>
+                  <button
+                    onClick={() => setMemoryTab('profile')}
+                    className={cn(
+                      "flex-1 py-3 text-sm font-medium transition-colors border-b-2",
+                      memoryTab === 'profile' 
+                        ? (theme === 'dark' ? "border-purple-500 text-purple-400" : "border-purple-600 text-purple-600")
+                        : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    )}
+                  >
+                    用户画像
+                  </button>
+                  <button
+                    onClick={() => setMemoryTab('summary')}
+                    className={cn(
+                      "flex-1 py-3 text-sm font-medium transition-colors border-b-2",
+                      memoryTab === 'summary' 
+                        ? (theme === 'dark' ? "border-purple-500 text-purple-400" : "border-purple-600 text-purple-600")
+                        : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    )}
+                  >
+                    对话总结
+                  </button>
+                  <button
+                    onClick={() => setMemoryTab('other')}
+                    className={cn(
+                      "flex-1 py-3 text-sm font-medium transition-colors border-b-2",
+                      memoryTab === 'other' 
+                        ? (theme === 'dark' ? "border-purple-500 text-purple-400" : "border-purple-600 text-purple-600")
+                        : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    )}
+                  >
+                    其他记忆
+                  </button>
+                </div>
+                <div className="p-4 overflow-y-auto flex-1">
+                  {(() => {
+                    const displayedMemories = memories.filter(m => {
+                      if (memoryTab === 'profile') return m.entity_key.includes('用户画像');
+                      if (memoryTab === 'summary') return m.entity_key.includes('对话总结');
+                      return !m.entity_key.includes('用户画像') && !m.entity_key.includes('对话总结');
+                    });
+
+                    if (displayedMemories.length === 0) {
+                      return (
+                        <div className={cn(
+                          "text-center py-12",
+                          theme === 'dark' ? "text-gray-500" : "text-gray-400"
+                        )}>
+                          暂无{memoryTab === 'profile' ? '用户画像' : memoryTab === 'summary' ? '对话总结' : '其他记忆'}数据~
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        {displayedMemories.map((m, i) => (
+                          <div key={i} className={cn(
+                            "p-4 rounded-xl border flex flex-col gap-2",
+                            theme === 'dark' ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-100"
+                          )}>
+                            <div className="flex justify-between items-start">
+                              <span className={cn(
+                                "font-semibold",
+                                theme === 'dark' ? "text-white" : "text-gray-900"
+                              )}>{m.entity_key}</span>
+                              <span className={cn(
+                                "text-xs px-2 py-0.5 rounded-full font-medium",
+                                theme === 'dark' ? "bg-purple-500/20 text-purple-300" : "bg-purple-100 text-purple-700"
+                              )}>权重: {m.weight}</span>
+                            </div>
+                            <p className={cn(
+                              "text-sm leading-relaxed",
+                              theme === 'dark' ? "text-gray-300" : "text-gray-700"
+                            )}>{m.entity_value}</p>
+                            <div className={cn(
+                              "text-xs mt-1",
+                              theme === 'dark' ? "text-gray-500" : "text-gray-400"
+                            )}>最后访问: {new Date(m.last_accessed.replace(' ', 'T') + 'Z').toLocaleString()}</div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         {/* Settings Modal */}
         <AnimatePresence>
@@ -1361,24 +1499,29 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
                     )}
 
                     {activeSettingsTab === 'memory' && (
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">记忆提取提示词</label>
-                        </div>
-                        <div className="space-y-4">
-                          <p className={cn("text-xs", theme === 'dark' ? "text-gray-400" : "text-[#6B7280]")}>
-                            设置在自动总结记忆时，AI应该着重提取哪些信息（例如：发生了哪些事情，出现了哪些人物，人物之间的关系等）。留空则使用默认提示词。
-                          </p>
-                          <textarea
-                            value={tempSettings.memoryPrompt}
-                            onChange={e => setTempSettings(prev => ({ ...prev, memoryPrompt: e.target.value }))}
-                            placeholder="例如：请着重记住发生了哪些事情，出现了哪些人物，人物之间的关系..."
-                            className={cn(
-                              "w-full rounded-xl px-4 py-3 text-sm outline-none min-h-[150px] resize-none transition-colors border",
-                              theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] border-[#E5E7EB] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
-                            )}
-                          />
-                        </div>
+                      <div className="space-y-8">
+                        <section className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col gap-1">
+                              <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">层级记忆管理 (Tiered Memory)</label>
+                              <p className={cn("text-[10px]", theme === 'dark' ? "text-gray-500" : "text-[#9CA3AF]")}>
+                                开启后，系统将使用 SQLite 存储长期事实，并根据当前对话自动检索。
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => setTempSettings(prev => ({ ...prev, useTieredMemory: !prev.useTieredMemory }))}
+                              className={cn(
+                                "w-12 h-6 rounded-full relative transition-colors",
+                                tempSettings.useTieredMemory ? "bg-emerald-500" : "bg-gray-300"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all",
+                                tempSettings.useTieredMemory ? "left-7" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+                        </section>
                       </div>
                     )}
 
@@ -1471,69 +1614,7 @@ ${msgsToSummarize.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}
           )}
         </AnimatePresence>
 
-        {/* Memory Modal */}
-        <AnimatePresence>
-          {isMemoryOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className={cn(
-                  "w-full max-w-lg rounded-2xl shadow-xl overflow-hidden",
-                  theme === 'dark' ? "bg-[#1A1A1A] text-white" : "bg-white text-[#1A1A1A]"
-                )}
-              >
-                <div className={cn("p-4 border-b flex justify-between items-center", theme === 'dark' ? "border-white/10" : "border-gray-200")}>
-                  <h2 className="font-bold flex items-center gap-2"><Brain size={18}/> 对话记忆</h2>
-                  <button onClick={() => setIsMemoryOpen(false)} className="hover:opacity-70"><X size={18}/></button>
-                </div>
-                <div className="p-4 flex flex-col gap-4">
-                  <p className={cn("text-xs", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>
-                    当对话超过10轮时，系统会自动总结早期对话并保存在这里。您也可以手动编辑或清除。
-                  </p>
-                  <textarea 
-                    value={draftMemory}
-                    onChange={e => setDraftMemory(e.target.value)}
-                    className={cn(
-                      "w-full h-40 p-3 rounded-lg border text-sm resize-none outline-none",
-                      theme === 'dark' ? "border-white/10 bg-black/20 focus:border-white/30" : "border-gray-200 bg-gray-50 focus:border-gray-400"
-                    )}
-                    placeholder="暂无记忆..."
-                  />
-                  <div className="flex justify-between items-center">
-                    <button 
-                      onClick={async () => {
-                        if (currentConvId) {
-                          await api.updateConversation(currentConvId, { memory: '', summarized_count: 0 });
-                          setConversations(prev => prev.map(c => c.id === currentConvId ? { ...c, memory: '', summarized_count: 0 } : c));
-                          setDraftMemory('');
-                        }
-                      }}
-                      className="text-red-500 text-sm hover:underline"
-                    >清除记忆</button>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => setIsMemoryOpen(false)} 
-                        className={cn("px-4 py-2 rounded-lg text-sm", theme === 'dark' ? "bg-white/5 hover:bg-white/10" : "bg-gray-100 hover:bg-gray-200")}
-                      >取消</button>
-                      <button 
-                        onClick={async () => {
-                          if (currentConvId) {
-                            await api.updateConversation(currentConvId, { memory: draftMemory });
-                            setConversations(prev => prev.map(c => c.id === currentConvId ? { ...c, memory: draftMemory } : c));
-                          }
-                          setIsMemoryOpen(false);
-                        }}
-                        className={cn("px-4 py-2 rounded-lg text-sm", theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]")}
-                      >保存</button>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+        {/* Memory Modal Removed */}
       </main>
     </div>
   );

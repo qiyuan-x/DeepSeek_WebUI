@@ -1,5 +1,5 @@
 {
   "name": "DeepSeek WebUI",
-  "description": "A professional DeepSeek API client with reasoning display, history persistence, and cost monitoring.",
+  "description": "A professional DeepSeek WebUI client with reasoning display, history persistence, and cost monitoring.",
   "requestFramePermissions": []
 }

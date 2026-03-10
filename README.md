@@ -1,20 +1,53 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+  <img src="./public/pwa-192x192.svg" width="120" height="120" alt="DeepSeek WebUI Logo" />
+  <h1>DeepSeek WebUI</h1>
+  <p>A professional DeepSeek WebUI client with reasoning display, history persistence, and cost monitoring.</p>
 </div>
 
-# Run and deploy your AI Studio app
+## 📖 简介 (Introduction)
 
-This contains everything you need to run your app locally.
+DeepSeek WebUI 是一款专为 DeepSeek API 打造的现代化、功能丰富的网页客户端。它不仅提供了流畅的对话体验，还内置了强大的长期记忆库、系统提示词模板管理、自定义主题等高级功能，帮助你更高效地使用大语言模型。
 
-View your app in AI Studio: https://ai.studio/apps/a8249562-5284-4fab-bfe5-c1d01bb3f75c
+## ✨ 核心功能 (Features)
 
-## Run Locally
+- **🧠 深度思考 (Reasoning) 展示**：完美支持 DeepSeek-R1 等推理模型，直观展示 AI 的思考过程。
+- **📚 分层记忆系统 (Tiered Memory)**：内置 SQLite 数据库，自动提取并持久化存储对话中的关键事实与用户画像，实现跨对话的“长期记忆”。
+- **📝 提示词模板 (Prompt Templates)**：支持创建、保存和快速应用常用的 System Prompt，一键切换 AI 角色。
+- **🎨 高度自定义 (Customizable UI)**：支持亮色/暗色主题无缝切换，并允许用户上传自定义背景图片。
+- **💰 成本监控 (Cost Monitoring)**：实时追踪 API Token 消耗与余额，让你对使用成本了如指掌。
+- **📂 会话管理 (Conversation Management)**：支持多会话的创建、重命名、删除与本地持久化保存。
 
-**Prerequisites:**  Node.js
+## 🚀 使用方法 (How to Use)
 
+1. **配置 API Key**：
+   - 点击左下角的“设置”图标（齿轮⚙️）。
+   - 在“API 设置”中填入你的 DeepSeek API Key 并保存。
+   
+2. **开始对话**：
+   - 点击左侧边栏的 **“新建对话”** 按钮即可开始全新的交流。
+   
+3. **设定 AI 角色 (System Prompt)**：
+   - 在对话界面顶部，点击 **“点击设定”**。
+   - 输入你希望 AI 扮演的角色或遵循的规则（例如：“你是一个专业的翻译官...”）。
+   - 你也可以在设置中提前创建好 **“提示词模板”**，在这里一键快速填充。
+   
+4. **开启长期记忆**：
+   - 在设置的“记忆库”选项卡中，开启 **“长期记忆”** 开关。
+   - 开启后，AI 会自动记住你提到的关键信息（如你的名字、喜好等），并在未来的对话中自动参考这些背景知识。
+   
+5. **个性化外观**：
+   - 在设置的“外观”选项卡中，你可以自由切换 **深色/浅色模式**，或者上传一张你喜欢的图片作为聊天背景。
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🛠️ 本地运行 (Local Development)
+
+如果你希望在本地运行此项目：
+
+```bash
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+```
+
+> **注意**：本项目包含后端服务（用于处理 SQLite 记忆库和 API 代理），请确保使用 `npm run dev` 启动完整的全栈环境。

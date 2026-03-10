@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +41,22 @@ function killServer() {
   return false;
 }
 
+// Automatically start OceanBase database in the background
+function startOceanBase() {
+  console.log('Attempting to start OceanBase database in the background...');
+  // Assuming the user uses docker to run OceanBase standalone
+  // If the container exists but is stopped, start it. If it doesn't exist, run it.
+  const cmd = `docker start ob || docker run -d -p 2881:2881 --name ob oceanbase/oceanbase-ce`;
+  
+  exec(cmd, (error, stdout, stderr) => {
+    if (error) {
+      console.log('OceanBase auto-start failed (Docker might not be running or installed):', error.message);
+    } else {
+      console.log('OceanBase auto-start successful:', stdout);
+    }
+  });
+}
+
 ipcMain.handle('stop-server', async () => {
   const killed = killServer();
   mainWindow?.webContents.send('server-status', { type: 'stopped' });
@@ -49,6 +65,9 @@ ipcMain.handle('stop-server', async () => {
 
 ipcMain.handle('start-server', async (event, options) => {
   if (serverProcess) return { success: true };
+
+  // Start OceanBase when the server starts
+  startOceanBase();
 
   return new Promise((resolve) => {
     let serverPath;

@@ -47,8 +47,6 @@ export interface Conversation {
   system_prompt: string;
   model: string;
   temperature: number;
-  memory?: string;
-  summarized_count?: number;
   created_at: string;
   updated_at: string;
 }

@@ -4,6 +4,8 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import { MemoryService } from "./server/memoryService";
+import db from "./server/db";
 
 dotenv.config();
 
@@ -81,6 +83,22 @@ async function startServer() {
   });
 
   // API Routes
+  app.get("/api/memories", (req, res) => {
+    try {
+      const { conversationName } = req.query;
+      let stmt;
+      let memories = [];
+      if (conversationName) {
+        stmt = db.prepare("SELECT * FROM entity_memories WHERE entity_key LIKE ? ORDER BY weight DESC, last_accessed DESC");
+        memories = stmt.all(`[${conversationName}]%`);
+      }
+      res.json(memories);
+    } catch (error) {
+      console.error("Failed to fetch memories:", error);
+      res.status(500).json({ error: "Failed to fetch memories" });
+    }
+  });
+
   app.get("/api/conversations", (req, res) => {
     const index = readJson(INDEX_FILE);
     const convs = index.map((item: any) => {
@@ -123,7 +141,6 @@ async function startServer() {
 
     writeJson(path.join(convDir, "settings.json"), newConv);
     writeJson(path.join(convDir, "messages.json"), []);
-    writeJson(path.join(convDir, "memory_history.json"), []);
 
     index.push({ id, title, path: convDir });
     writeJson(INDEX_FILE, index);
@@ -141,6 +158,7 @@ async function startServer() {
     const conv = readJson(settingsFile, {});
 
     if (req.body.title !== undefined && req.body.title !== conv.title) {
+      const oldTitle = conv.title;
       const newTitle = req.body.title;
       const newDir = getConvDir(newTitle, req.params.id);
       if (fs.existsSync(item.path)) {
@@ -149,22 +167,18 @@ async function startServer() {
       item.path = newDir;
       item.title = newTitle;
       conv.title = newTitle;
+
+      // Update memory keys
+      try {
+        const stmt = db.prepare("UPDATE entity_memories SET entity_key = REPLACE(entity_key, ?, ?) WHERE entity_key LIKE ?");
+        stmt.run(`[${oldTitle}] `, `[${newTitle}] `, `[${oldTitle}] %`);
+      } catch (e) {
+        console.error("Failed to rename memory keys:", e);
+      }
     }
 
     if (req.body.system_prompt !== undefined) conv.system_prompt = req.body.system_prompt;
     if (req.body.model !== undefined) conv.model = req.body.model;
-    if (req.body.memory !== undefined) {
-      conv.memory = req.body.memory;
-      // Save to memory history
-      const historyFile = path.join(item.path, "memory_history.json");
-      const history = readJson(historyFile);
-      history.push({
-        memory: req.body.memory,
-        updated_at: new Date().toISOString()
-      });
-      writeJson(historyFile, history);
-    }
-    if (req.body.summarized_count !== undefined) conv.summarized_count = req.body.summarized_count;
     
     conv.updated_at = new Date().toISOString();
     writeJson(path.join(item.path, "settings.json"), conv);
@@ -278,18 +292,87 @@ async function startServer() {
 
   // Proxy for DeepSeek Chat (Streaming)
   app.post("/api/chat", async (req, res) => {
-    const { messages, model, temperature, stream, apiKey: userApiKey, stream_options } = req.body;
+    const { messages, systemPrompt, model, temperature, stream, apiKey: userApiKey, stream_options, useTieredMemory, conversationId, conversationName } = req.body;
     const apiKey = (userApiKey !== undefined && userApiKey !== null) ? userApiKey : process.env.DEEPSEEK_API_KEY;
 
     if (!apiKey) return res.status(401).json({ error: "API Key required" });
 
     try {
+      let finalMessages = [...messages];
+      
+      // Inject system prompt if provided
+      if (systemPrompt) {
+        finalMessages.unshift({ role: 'system', content: systemPrompt });
+      }
+
+      let lastUserMsg = messages.filter((m: any) => m.role === 'user').pop();
+
+      if (useTieredMemory && lastUserMsg) {
+        // 1. Retrieval
+        const facts = await MemoryService.retrieve(lastUserMsg.content, apiKey, conversationName);
+        
+        // 2. Inject User Profile & Summary
+        const prefix = conversationName ? `[${conversationName}] ` : "";
+        const profileStmt = db.prepare("SELECT entity_value FROM entity_memories WHERE entity_key LIKE ?");
+        const profileData = profileStmt.all(`${prefix}用户画像%`) as { entity_value: string }[];
+        
+        const summaryStmt = db.prepare("SELECT entity_key, entity_value FROM entity_memories WHERE entity_key LIKE ? ORDER BY last_accessed DESC LIMIT 5");
+        const summaryData = summaryStmt.all(`${prefix}对话总结-%`) as { entity_key: string, entity_value: string }[];
+        
+        let memoryContext = facts || "";
+        if (profileData.length > 0) {
+          memoryContext += `\n\n[用户画像]\n${profileData.map(p => p.entity_value).join("\n")}`;
+        }
+        if (summaryData.length > 0) {
+          memoryContext += `\n\n[历史对话总结]\n${summaryData.map(p => `${p.entity_key}: ${p.entity_value}`).join("\n")}`;
+        }
+
+        if (memoryContext.trim()) {
+          // Find system message or add one
+          const sysIdx = finalMessages.findIndex((m: any) => m.role === 'system');
+          const factPrompt = `\n\n=== 附加背景信息 ===\n以下是关于用户和历史对话的记忆，请在回答时作为参考（但必须优先遵循上述的人物设定）：\n${memoryContext.trim()}`;
+          if (sysIdx !== -1) {
+            finalMessages[sysIdx].content += factPrompt;
+          } else {
+            finalMessages.unshift({ role: 'system', content: `你是一个助手。${factPrompt}` });
+          }
+        }
+
+        // 3. Short-term memory (keep only last 5 rounds + system prompt)
+        const systemMsgs = finalMessages.filter((m: any) => m.role === 'system');
+        const otherMsgs = finalMessages.filter((m: any) => m.role !== 'system');
+        let recentMsgs = otherMsgs.slice(-10); // 5 rounds = 10 messages
+        
+        // Ensure the first message after system is a user message
+        if (recentMsgs.length > 0 && recentMsgs[0].role !== 'user') {
+          recentMsgs.shift();
+        }
+        
+        finalMessages = [...systemMsgs, ...recentMsgs];
+      }
+
+      // Add a strong reminder to the last user message to strictly follow the system prompt
+      // This prevents the AI from being biased by its own previous replies in the chat history
+      const sysMsg = finalMessages.find((m: any) => m.role === 'system');
+      if (sysMsg && sysMsg.content) {
+        const lastMsgIdx = finalMessages.length - 1;
+        if (lastMsgIdx >= 0 && finalMessages[lastMsgIdx].role === 'user') {
+          // Extract the original system prompt (without the memory context)
+          const originalSysPrompt = sysMsg.content.split('\n\n=== 附加背景信息 ===')[0].trim();
+          if (originalSysPrompt && originalSysPrompt !== '你是一个助手。') {
+            finalMessages[lastMsgIdx].content += `\n\n[系统提示：请严格遵循你的人物设定：“${originalSysPrompt}”，不要受历史对话风格的影响。]`;
+          }
+        }
+      }
+
       const body: any = {
         model,
-        messages,
+        messages: finalMessages,
         temperature,
         stream,
       };
+
+      console.log("Sending to DeepSeek API:", JSON.stringify(body.messages, null, 2));
 
       if (stream && stream_options) {
         body.stream_options = stream_options;
@@ -305,7 +388,13 @@ async function startServer() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const text = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(text);
+        } catch (e) {
+          errorData = { error: { message: `DeepSeek API Error (${response.status}): ${text.substring(0, 100)}` } };
+        }
         return res.status(response.status).json(errorData);
       }
 
@@ -317,14 +406,69 @@ async function startServer() {
         const reader = response.body?.getReader();
         if (!reader) throw new Error("No reader");
 
+        let fullResponse = "";
+        let buffer = "";
+        const decoder = new TextDecoder("utf-8");
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+          
+          const lines = buffer.split('\n');
+          // Keep the last incomplete line in the buffer
+          buffer = lines.pop() || "";
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6).trim();
+              if (dataStr === '[DONE]') continue;
+              try {
+                const data = JSON.parse(dataStr);
+                if (data.choices?.[0]?.delta?.content) {
+                  fullResponse += data.choices[0].delta.content;
+                }
+              } catch (e) {}
+            }
+          }
           res.write(value);
         }
+        
+        if (buffer) {
+          const lines = buffer.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6).trim();
+              if (dataStr === '[DONE]') continue;
+              try {
+                const data = JSON.parse(dataStr);
+                if (data.choices?.[0]?.delta?.content) {
+                  fullResponse += data.choices[0].delta.content;
+                }
+              } catch (e) {}
+            }
+          }
+        }
+        
         res.end();
+
+        // 3. Ingest (Async)
+        if (useTieredMemory && lastUserMsg && fullResponse) {
+          const round = Math.ceil(messages.length / 2);
+          console.log("Ingesting memory:", lastUserMsg.content, "=>", fullResponse.substring(0, 50) + "...");
+          MemoryService.ingest(lastUserMsg.content, fullResponse, apiKey, conversationId, conversationName, round).catch(err => console.error("Ingest error:", err));
+        }
       } else {
         const data = await response.json();
+        const aiResponse = data.choices?.[0]?.message?.content;
+        
+        // 3. Ingest (Async)
+        if (useTieredMemory && lastUserMsg && aiResponse) {
+          const round = Math.ceil(messages.length / 2);
+          MemoryService.ingest(lastUserMsg.content, aiResponse, apiKey, conversationId, conversationName, round).catch(err => console.error("Ingest error:", err));
+        }
+        
         res.json(data);
       }
     } catch (error: any) {
