@@ -57,6 +57,24 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Basic Auth Middleware
+  const WEBUI_PASSWORD = process.env.WEBUI_PASSWORD;
+  const WEBUI_USERNAME = process.env.WEBUI_USERNAME || 'admin';
+
+  if (WEBUI_PASSWORD) {
+    app.use((req, res, next) => {
+      const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+      const [login, pwd] = Buffer.from(b64auth, 'base64').toString().split(':');
+
+      if (login && pwd && login === WEBUI_USERNAME && pwd === WEBUI_PASSWORD) {
+        return next();
+      }
+
+      res.set('WWW-Authenticate', 'Basic realm="DeepSeek WebUI"');
+      res.status(401).send('Authentication required.');
+    });
+  }
+
   // Settings API
   const SETTINGS_FILE = path.join(CONFIG_DIR, "settings.json");
 

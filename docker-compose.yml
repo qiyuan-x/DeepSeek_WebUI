@@ -11,4 +11,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      # 取消注释并设置密码以启用基础身份验证 (Basic Auth)
+      # - WEBUI_PASSWORD=your_secure_password
+      # - WEBUI_USERNAME=admin
     restart: unless-stopped

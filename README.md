@@ -66,6 +66,35 @@ docker build -t deepseek-webui .
 docker run -d -p 2233:3000 -v $(pwd)/data:/app/data --name deepseek-webui deepseek-webui
 ```
 
+## 🔒 访问控制 (Authentication)
+
+如果你将项目部署在局域网或公网，并希望防止他人直接访问，你可以通过设置环境变量来开启基础身份验证 (Basic Auth)：
+
+### Docker Compose 部署：
+编辑 `docker-compose.yml` 文件，取消 `environment` 下面关于密码的注释并设置你的密码：
+```yaml
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - WEBUI_PASSWORD=your_secure_password  # 设置你的密码
+      - WEBUI_USERNAME=admin                 # (可选) 设置你的用户名，默认为 admin
+```
+然后重新启动容器：`docker-compose up -d`
+
+### 原生 Docker 命令部署：
+在运行容器时加上 `-e` 参数：
+```bash
+docker run -d -p 2233:3000 -v $(pwd)/data:/app/data -e WEBUI_PASSWORD=your_secure_password --name deepseek-webui deepseek-webui
+```
+
+### 源码本地运行部署：
+在项目根目录创建一个 `.env` 文件，并添加以下内容：
+```env
+WEBUI_PASSWORD=your_secure_password
+WEBUI_USERNAME=admin
+```
+然后重启服务即可生效。
+
 ## 🛠️ 本地运行 (Local Development)
 
 如果你希望在本地运行此项目：
