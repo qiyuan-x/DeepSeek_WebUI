@@ -38,6 +38,34 @@ DeepSeek WebUI 是一款专为 DeepSeek API 打造的现代化、功能丰富的
 5. **个性化外观**：
    - 在设置的“外观”选项卡中，你可以自由切换 **深色/浅色模式**，或者上传一张你喜欢的图片作为聊天背景。
 
+## 🐳 Docker 部署 (Docker Deployment)
+
+如果你希望使用 Docker 快速部署本项目（推荐）：
+
+### 方式一：使用 Docker Compose（最简单）
+
+1. 确保你已经安装了 Docker 和 Docker Compose。
+2. 在项目根目录下运行：
+
+```bash
+docker-compose up -d
+```
+
+3. 访问 `http://localhost:3000` 即可使用。
+> **注意**：所有数据（记忆库、设置等）会自动持久化保存在当前目录的 `data` 文件夹中。
+
+### 方式二：使用原生 Docker 命令
+
+如果你不想使用 Docker Compose，也可以直接构建并运行容器：
+
+```bash
+# 构建镜像
+docker build -t deepseek-webui .
+
+# 运行容器（将本地的 data 目录挂载以持久化数据）
+docker run -d -p 3000:3000 -v $(pwd)/data:/app/data --name deepseek-webui deepseek-webui
+```
+
 ## 🛠️ 本地运行 (Local Development)
 
 如果你希望在本地运行此项目：
