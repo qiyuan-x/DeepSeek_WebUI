@@ -51,7 +51,7 @@ DeepSeek WebUI 是一款专为 DeepSeek API 打造的现代化、功能丰富的
 docker-compose up -d
 ```
 
-3. 访问 `http://localhost:3000` 即可使用。
+3. 访问 `http://localhost:2233` 即可使用。
 > **注意**：所有数据（记忆库、设置等）会自动持久化保存在当前目录的 `data` 文件夹中。
 
 ### 方式二：使用原生 Docker 命令
@@ -63,7 +63,7 @@ docker-compose up -d
 docker build -t deepseek-webui .
 
 # 运行容器（将本地的 data 目录挂载以持久化数据）
-docker run -d -p 3000:3000 -v $(pwd)/data:/app/data --name deepseek-webui deepseek-webui
+docker run -d -p 2233:3000 -v $(pwd)/data:/app/data --name deepseek-webui deepseek-webui
 ```
 
 ## 🛠️ 本地运行 (Local Development)

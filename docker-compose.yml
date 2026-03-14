@@ -5,7 +5,7 @@ services:
     build: .
     container_name: deepseek-webui
     ports:
-      - "3000:3000"
+      - "2233:3000"
     volumes:
       - ./data:/app/data
     environment:
