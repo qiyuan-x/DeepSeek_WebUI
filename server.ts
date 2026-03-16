@@ -70,8 +70,12 @@ async function startServer() {
     }
   }
   
-  // 将密钥写入项目根目录，方便用户在编辑器中查看
-  fs.writeFileSync(path.join(process.cwd(), 'SECRET_KEY.txt'), `您的访问密钥 (Secret Key) 是:\n\n${WEBUI_SECRET_KEY}\n\n请复制此密钥在登录页面输入。`, 'utf-8');
+  // 将密钥写入数据目录，方便用户查看
+  try {
+    fs.writeFileSync(path.join(DATA_DIR, 'SECRET_KEY.txt'), `您的访问密钥 (Secret Key) 是:\n\n${WEBUI_SECRET_KEY}\n\n请复制此密钥在登录页面输入。`, 'utf-8');
+  } catch (err) {
+    console.warn('[WARN] 无法写入 SECRET_KEY.txt 文件，请直接从控制台复制密钥。');
+  }
 
   console.log('\n====================================================');
   console.log(`[AUTH] WebUI 访问密钥 (Secret Key): ${WEBUI_SECRET_KEY}`);
@@ -83,6 +87,11 @@ async function startServer() {
     if (req.path.startsWith('/api/')) {
       // Allow verify-key endpoint
       if (req.path === '/api/verify-key') {
+        return next();
+      }
+      
+      // Bypass auth in development mode (e.g., AI Studio preview)
+      if (process.env.NODE_ENV !== 'production') {
         return next();
       }
       
