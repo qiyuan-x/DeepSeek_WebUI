@@ -1,24 +1,50 @@
 import { Message, Conversation } from "../types";
 
+const getAuthHeaders = (extraHeaders: Record<string, string> = {}) => {
+  const key = localStorage.getItem('webui_secret_key');
+  return {
+    ...extraHeaders,
+    ...(key ? { 'x-webui-secret-key': key } : {})
+  };
+};
+
+const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+  const headers = getAuthHeaders(options.headers as Record<string, string>);
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401 && url.startsWith('/api/') && url !== '/api/verify-key') {
+    window.dispatchEvent(new CustomEvent('webui-auth-required'));
+  }
+  return res;
+};
+
 export const api = {
+  async verifyKey(key: string) {
+    const res = await fetch("/api/verify-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    return res.json();
+  },
+
   async getMemories(conversationName?: string): Promise<any[]> {
     const url = conversationName ? `/api/memories?conversationName=${encodeURIComponent(conversationName)}` : "/api/memories";
-    const res = await fetch(url);
+    const res = await fetchWithAuth(url);
     return res.json();
   },
 
   async getConversations(): Promise<Conversation[]> {
-    const res = await fetch("/api/conversations");
+    const res = await fetchWithAuth("/api/conversations");
     return res.json();
   },
 
   async getMessages(conversationId: string): Promise<Message[]> {
-    const res = await fetch(`/api/conversations/${conversationId}/messages`);
+    const res = await fetchWithAuth(`/api/conversations/${conversationId}/messages`);
     return res.json();
   },
 
   async createConversation(conv: Partial<Conversation>) {
-    const res = await fetch("/api/conversations", {
+    const res = await fetchWithAuth("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(conv),
@@ -27,7 +53,7 @@ export const api = {
   },
 
   async updateConversation(id: string, updates: Partial<Conversation>) {
-    const res = await fetch(`/api/conversations/${id}`, {
+    const res = await fetchWithAuth(`/api/conversations/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
@@ -36,7 +62,7 @@ export const api = {
   },
 
   async deleteConversation(id: string) {
-    const res = await fetch(`/api/conversations/${id}`, {
+    const res = await fetchWithAuth(`/api/conversations/${id}`, {
       method: "DELETE",
     });
     if (!res.ok) {
@@ -47,7 +73,7 @@ export const api = {
   },
 
   async saveMessage(message: Partial<Message>) {
-    const res = await fetch("/api/messages", {
+    const res = await fetchWithAuth("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(message),
@@ -56,7 +82,7 @@ export const api = {
   },
 
   async deleteMessage(id: string) {
-    const res = await fetch(`/api/messages/${id}`, {
+    const res = await fetchWithAuth(`/api/messages/${id}`, {
       method: "DELETE",
     });
     if (!res.ok) {
@@ -67,19 +93,19 @@ export const api = {
   },
 
   async getBalance(apiKey?: string) {
-    const res = await fetch("/api/balance", {
-      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+    const res = await fetchWithAuth("/api/balance", {
+      headers: apiKey ? { "X-DeepSeek-API-Key": apiKey } : {},
     });
     return res.json();
   },
 
   async getSettings() {
-    const res = await fetch("/api/settings");
+    const res = await fetchWithAuth("/api/settings");
     return res.json();
   },
 
   async saveSettings(settings: any) {
-    const res = await fetch("/api/settings", {
+    const res = await fetchWithAuth("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),
@@ -98,7 +124,7 @@ export const api = {
     conversationId?: string;
     conversationName?: string;
   }, signal?: AbortSignal) {
-    return fetch("/api/chat", {
+    return fetchWithAuth("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),

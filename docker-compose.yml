@@ -5,13 +5,12 @@ services:
     build: .
     container_name: deepseek-webui
     ports:
-      - "2233:3000"
+      - "2233:2233"
     volumes:
       - ./data:/app/data
     environment:
       - NODE_ENV=production
-      - PORT=3000
-      # 取消注释并设置密码以启用基础身份验证 (Basic Auth)
-      # - WEBUI_PASSWORD=your_secure_password
-      # - WEBUI_USERNAME=admin
+      - PORT=2233
+      # 取消注释并设置自定义密钥以启用访问控制 (如果不设置，系统将在首次启动时自动生成并打印在控制台)
+      # - WEBUI_SECRET_KEY=your_secure_secret_key
     restart: unless-stopped

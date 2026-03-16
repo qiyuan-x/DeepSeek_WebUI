@@ -36,7 +36,12 @@ export default function App() {
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 768;
+    }
+    return true;
+  });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
@@ -45,6 +50,14 @@ export default function App() {
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [memoryTab, setMemoryTab] = useState<'profile' | 'summary' | 'other'>('profile');
   const [memories, setMemories] = useState<any[]>([]);
+
+  const [isAuthRequired, setIsAuthRequired] = useState(false);
+
+  useEffect(() => {
+    const handleAuthRequired = () => setIsAuthRequired(true);
+    window.addEventListener('webui-auth-required', handleAuthRequired);
+    return () => window.removeEventListener('webui-auth-required', handleAuthRequired);
+  }, []);
 
   // Settings
   const [apiKey, setApiKey] = useState('');
@@ -101,6 +114,15 @@ export default function App() {
 
   // Load initial data
   useEffect(() => {
+    // Check for secret key in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const keyFromUrl = urlParams.get('key');
+    if (keyFromUrl) {
+      localStorage.setItem('webui_secret_key', keyFromUrl);
+      // Remove key from URL to prevent sharing it accidentally
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     loadConversations();
     loadSettings();
   }, []);
@@ -108,12 +130,14 @@ export default function App() {
   const loadSettings = async () => {
     try {
       const settings = await api.getSettings();
-      if (settings.apiKey) setApiKey(settings.apiKey);
-      if (settings.temperature !== undefined) setTemperature(settings.temperature);
-      if (settings.theme) setTheme(settings.theme);
-      if (settings.bgImage) setBgImage(settings.bgImage);
-      if (settings.promptTemplates) setPromptTemplates(settings.promptTemplates);
-      if (settings.useTieredMemory !== undefined) setUseTieredMemory(settings.useTieredMemory);
+      if (settings && !settings.error) {
+        if (settings.apiKey) setApiKey(settings.apiKey);
+        if (settings.temperature !== undefined) setTemperature(settings.temperature);
+        if (settings.theme) setTheme(settings.theme);
+        if (settings.bgImage) setBgImage(settings.bgImage);
+        if (settings.promptTemplates) setPromptTemplates(settings.promptTemplates);
+        if (settings.useTieredMemory !== undefined) setUseTieredMemory(settings.useTieredMemory);
+      }
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
@@ -206,13 +230,25 @@ export default function App() {
   }, [messages]);
 
   const loadConversations = async () => {
-    const data = await api.getConversations();
-    setConversations(data);
+    try {
+      const data = await api.getConversations();
+      if (Array.isArray(data)) {
+        setConversations(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const loadMessages = async (id: string) => {
-    const data = await api.getMessages(id);
-    setMessages(data);
+    try {
+      const data = await api.getMessages(id);
+      if (Array.isArray(data)) {
+        setMessages(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const scrollToBottom = () => {
@@ -525,6 +561,53 @@ export default function App() {
   const totalTokens = messages.reduce((acc, m) => acc + (m.tokens || 0), 0);
   const totalCost = messages.reduce((acc, m) => acc + (m.cost || 0), 0);
 
+  if (isAuthRequired) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[#0A0A0A] text-white font-sans">
+        <div className="w-full max-w-md p-8 bg-[#111111] rounded-2xl border border-white/10 shadow-2xl mx-4">
+          <div className="flex justify-center mb-6">
+            <img src="/icon.ico" alt="Logo" className="w-16 h-16 rounded-full object-cover shadow-lg" />
+          </div>
+          <h1 className="text-2xl font-bold text-center mb-2">DeepSeek WebUI</h1>
+          <p className="text-center text-gray-400 mb-8 text-sm">请输入服务端提供的访问密钥</p>
+          
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.currentTarget);
+            const key = formData.get('key') as string;
+            try {
+              const res = await api.verifyKey(key);
+              if (res.success) {
+                localStorage.setItem('webui_secret_key', key);
+                setIsAuthRequired(false);
+                window.location.reload();
+              } else {
+                alert('密钥错误，请重试');
+              }
+            } catch (err) {
+              alert('验证失败，请检查网络或服务端状态');
+            }
+          }}>
+            <input
+              type="password"
+              name="key"
+              placeholder="输入访问密钥..."
+              className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-colors mb-4"
+              required
+              autoFocus
+            />
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors"
+            >
+              进入系统
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cn(
       "flex h-screen w-screen overflow-hidden font-sans transition-colors duration-300",
@@ -567,7 +650,12 @@ export default function App() {
                 conversations.map(conv => (
                   <div
                     key={conv.id}
-                    onClick={() => setCurrentConvId(conv.id)}
+                    onClick={() => {
+                      setCurrentConvId(conv.id);
+                      if (window.innerWidth < 768) {
+                        setIsSidebarOpen(false);
+                      }
+                    }}
                     className={cn(
                       "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all",
                       currentConvId === conv.id 
@@ -868,10 +956,10 @@ export default function App() {
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">
                 <div className={cn(
-                  "p-4 rounded-2xl",
-                  theme === 'dark' ? "bg-white/5" : "bg-[#F3F4F6]"
+                  "p-2 rounded-full shadow-md",
+                  theme === 'dark' ? "bg-white/5" : "bg-white"
                 )}>
-                  <Brain size={48} className={theme === 'dark' ? "text-white" : "text-[#1A1A1A]"} />
+                  <img src="/icon.ico" alt="Logo" className="w-16 h-16 rounded-full object-cover" />
                 </div>
                 <h2 className="text-xl font-bold">今天我能帮您什么？</h2>
                 <p className={cn(
@@ -1187,10 +1275,10 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="flex flex-1 overflow-hidden">
+                <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
                   {/* Settings Sidebar Tabs */}
                   <div className={cn(
-                    "w-48 border-r flex flex-col p-2 gap-1",
+                    "w-full md:w-48 border-b md:border-b-0 md:border-r flex md:flex-col p-2 gap-1 overflow-x-auto shrink-0 hide-scrollbar",
                     theme === 'dark' ? "border-white/10 bg-white/5" : "border-[#F3F4F6] bg-[#F9FAFB]"
                   )}>
                     {[
@@ -1204,7 +1292,7 @@ export default function App() {
                         key={tab.id}
                         onClick={() => setActiveSettingsTab(tab.id as any)}
                         className={cn(
-                          "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all",
+                          "flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap",
                           activeSettingsTab === tab.id
                             ? (theme === 'dark' ? "bg-white text-black" : "bg-[#1A1A1A] text-white")
                             : (theme === 'dark' ? "text-gray-400 hover:bg-white/5 hover:text-white" : "text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#1A1A1A]")
@@ -1216,7 +1304,7 @@ export default function App() {
                     ))}
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-6">
+                  <div className="flex-1 overflow-y-auto p-4 md:p-6">
                     {activeSettingsTab === 'api' && (
                       <div className="space-y-8">
                         {/* API Key */}

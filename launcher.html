@@ -171,7 +171,7 @@
 <body>
     <div class="header">
         <h1>DeepSeek WebUI</h1>
-        <p>DeepSeek 桌面启动器 v1.0.0</p>
+        <p>DeepSeek 桌面启动器 v1.0.1</p>
     </div>
 
     <div class="content">
@@ -182,7 +182,7 @@
             </div>
             <div class="status-item">
                 <span class="status-label">本地访问地址</span>
-                <span class="status-value" style="cursor: pointer; text-decoration: underline;" onclick="window.electronAPI.openExternal('http://localhost:3000')">http://localhost:3000</span>
+                <span id="server-url" class="status-value" style="cursor: pointer; text-decoration: underline;" onclick="window.electronAPI.openExternal(this.textContent)">http://localhost:3000</span>
             </div>
         </div>
 
@@ -201,6 +201,10 @@
                 <input type="checkbox" id="auto-open" checked>
                 启动成功后自动打开网页
             </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="auto-login" checked>
+                自动填入密钥进入
+            </label>
         </div>
         <div class="btn-group">
             <button id="stop-btn" class="btn btn-danger" disabled>停止服务</button>
@@ -213,8 +217,22 @@
         const stopBtn = document.getElementById('stop-btn');
         const serverStatus = document.getElementById('server-status');
         const autoOpenCheckbox = document.getElementById('auto-open');
+        const autoLoginCheckbox = document.getElementById('auto-login');
         const logContainer = document.getElementById('log-container');
         const clearLogsBtn = document.getElementById('clear-logs');
+
+        let currentPort = null;
+        let currentSecretKey = null;
+
+        autoLoginCheckbox.addEventListener('change', () => {
+            if (currentPort) {
+                let url = `http://localhost:${currentPort}`;
+                if (autoLoginCheckbox.checked && currentSecretKey) {
+                    url += `/?key=${currentSecretKey}`;
+                }
+                document.getElementById('server-url').textContent = url;
+            }
+        });
 
         function addLog(msg) {
             const div = document.createElement('div');
@@ -250,7 +268,8 @@
             updateUI('starting');
             addLog('正在启动后端进程...');
             const result = await window.electronAPI.startServer({
-                autoOpen: autoOpenCheckbox.checked
+                autoOpen: autoOpenCheckbox.checked,
+                autoLogin: autoLoginCheckbox.checked
             });
             if (!result.success) {
                 addLog(`启动失败: ${result.error || '未知错误'}`);
@@ -274,9 +293,19 @@
                 addLog(`[ERROR] ${status.data.trim()}`);
             } else if (status.type === 'ready') {
                 updateUI('online');
-                addLog('服务就绪，端口 3000 已开放。');
+                currentPort = status.port || 3000;
+                currentSecretKey = status.secretKey;
+                let url = `http://localhost:${currentPort}`;
+                if (autoLoginCheckbox.checked && currentSecretKey) {
+                    url += `/?key=${currentSecretKey}`;
+                }
+                document.getElementById('server-url').textContent = url;
+                addLog(`服务就绪，端口 ${currentPort} 已开放。`);
             } else if (status.type === 'exit' || status.type === 'stopped') {
                 updateUI('offline');
+                currentPort = null;
+                currentSecretKey = null;
+                document.getElementById('server-url').textContent = 'http://localhost:3000';
                 addLog('后端进程已退出。');
             }
         });

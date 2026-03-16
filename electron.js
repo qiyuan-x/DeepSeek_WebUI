@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, exec } from 'child_process';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,8 +45,8 @@ function killServer() {
 // Automatically start OceanBase database in the background
 function startOceanBase() {
   console.log('Attempting to start OceanBase database in the background...');
-  // Assuming the user uses docker to run OceanBase standalone
-  // If the container exists but is stopped, start it. If it doesn't exist, run it.
+  // 暂时注释掉自动启动 OceanBase 的代码，避免在用户不知情的情况下创建 Docker 容器
+  /*
   const cmd = `docker start ob || docker run -d -p 2881:2881 --name ob oceanbase/oceanbase-ce`;
   
   exec(cmd, (error, stdout, stderr) => {
@@ -55,6 +56,8 @@ function startOceanBase() {
       console.log('OceanBase auto-start successful:', stdout);
     }
   });
+  */
+  console.log('OceanBase auto-start is disabled.');
 }
 
 ipcMain.handle('stop-server', async () => {
@@ -99,15 +102,41 @@ ipcMain.handle('start-server', async (event, options) => {
       shell: !app.isPackaged
     });
 
+    const port = app.isPackaged ? 2233 : 3000;
+
+    let secretKey = '';
+
     serverProcess.stdout.on('data', (data) => {
       const output = data.toString();
       console.log(`Server: ${output}`);
       mainWindow?.webContents.send('server-status', { type: 'stdout', data: output });
       
-      if (output.includes('Server running on http://localhost:3000')) {
-        mainWindow?.webContents.send('server-status', { type: 'ready' });
+      // Extract secret key from logs
+      const keyMatch = output.match(/\[AUTH\] WebUI 访问密钥 \(Secret Key\): ([^\s]+)/);
+      if (keyMatch && keyMatch[1]) {
+        secretKey = keyMatch[1];
+      }
+      
+      if (output.includes(`Server running on http://localhost:${port}`)) {
+        // Try to read secret key from file if not found in logs
+        if (!secretKey) {
+          try {
+            const secretKeyPath = path.join(userDataPath, 'config', 'secret.key');
+            if (fs.existsSync(secretKeyPath)) {
+              secretKey = fs.readFileSync(secretKeyPath, 'utf-8').trim();
+            }
+          } catch (e) {
+            console.error('Failed to read secret key file:', e);
+          }
+        }
+
+        mainWindow?.webContents.send('server-status', { type: 'ready', port, secretKey });
         if (options.autoOpen) {
-          shell.openExternal('http://localhost:3000');
+          let url = `http://localhost:${port}`;
+          if (options.autoLogin && secretKey) {
+            url += `/?key=${secretKey}`;
+          }
+          shell.openExternal(url);
         }
         resolve({ success: true });
       }

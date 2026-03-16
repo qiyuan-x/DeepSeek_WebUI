@@ -53,27 +53,55 @@ if (!fs.existsSync(INDEX_FILE)) writeJson(INDEX_FILE, []);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.NODE_ENV === 'production' ? 2233 : 3000;
 
   app.use(express.json());
 
-  // Basic Auth Middleware
-  const WEBUI_PASSWORD = process.env.WEBUI_PASSWORD;
-  const WEBUI_USERNAME = process.env.WEBUI_USERNAME || 'admin';
+  // WebUI Secret Key Auth Middleware
+  let WEBUI_SECRET_KEY = process.env.WEBUI_SECRET_KEY;
+  const SECRET_KEY_FILE = path.join(CONFIG_DIR, "secret.key");
+  
+  if (!WEBUI_SECRET_KEY) {
+    if (fs.existsSync(SECRET_KEY_FILE)) {
+      WEBUI_SECRET_KEY = fs.readFileSync(SECRET_KEY_FILE, 'utf-8').trim();
+    } else {
+      WEBUI_SECRET_KEY = crypto.randomBytes(16).toString('hex');
+      fs.writeFileSync(SECRET_KEY_FILE, WEBUI_SECRET_KEY, 'utf-8');
+    }
+  }
+  
+  // 将密钥写入项目根目录，方便用户在编辑器中查看
+  fs.writeFileSync(path.join(process.cwd(), 'SECRET_KEY.txt'), `您的访问密钥 (Secret Key) 是:\n\n${WEBUI_SECRET_KEY}\n\n请复制此密钥在登录页面输入。`, 'utf-8');
 
-  if (WEBUI_PASSWORD) {
-    app.use((req, res, next) => {
-      const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
-      const [login, pwd] = Buffer.from(b64auth, 'base64').toString().split(':');
+  console.log('\n====================================================');
+  console.log(`[AUTH] WebUI 访问密钥 (Secret Key): ${WEBUI_SECRET_KEY}`);
+  console.log(`[AUTH] 请在浏览器中输入此密钥以进入系统。`);
+  console.log('====================================================\n');
 
-      if (login && pwd && login === WEBUI_USERNAME && pwd === WEBUI_PASSWORD) {
+  app.use((req, res, next) => {
+    // Only protect API routes
+    if (req.path.startsWith('/api/')) {
+      // Allow verify-key endpoint
+      if (req.path === '/api/verify-key') {
         return next();
       }
+      
+      const clientKey = req.headers['x-webui-secret-key'];
+      if (clientKey !== WEBUI_SECRET_KEY) {
+        return res.status(401).json({ error: 'Unauthorized. Invalid Secret Key.' });
+      }
+    }
+    next();
+  });
 
-      res.set('WWW-Authenticate', 'Basic realm="DeepSeek WebUI"');
-      res.status(401).send('Authentication required.');
-    });
-  }
+  app.post('/api/verify-key', (req, res) => {
+    const { key } = req.body;
+    if (key === WEBUI_SECRET_KEY) {
+      res.json({ success: true });
+    } else {
+      res.status(401).json({ success: false, error: 'Invalid key' });
+    }
+  });
 
   // Settings API
   const SETTINGS_FILE = path.join(CONFIG_DIR, "settings.json");
@@ -292,10 +320,9 @@ async function startServer() {
   });
 
   app.get("/api/balance", async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const apiKey = authHeader ? authHeader.split(" ")[1] : process.env.DEEPSEEK_API_KEY;
+    const apiKey = req.headers["x-deepseek-api-key"] || process.env.DEEPSEEK_API_KEY;
     
-    if (!apiKey) return res.status(401).json({ error: "API Key required" });
+    if (!apiKey) return res.status(400).json({ error: "API Key required" });
 
     try {
       const response = await fetch("https://api.deepseek.com/user/balance", {
@@ -313,7 +340,7 @@ async function startServer() {
     const { messages, systemPrompt, model, temperature, stream, apiKey: userApiKey, stream_options, useTieredMemory, conversationId, conversationName } = req.body;
     const apiKey = (userApiKey !== undefined && userApiKey !== null) ? userApiKey : process.env.DEEPSEEK_API_KEY;
 
-    if (!apiKey) return res.status(401).json({ error: "API Key required" });
+    if (!apiKey) return res.status(400).json({ error: "API Key required" });
 
     try {
       let finalMessages = [...messages];
@@ -413,7 +440,8 @@ async function startServer() {
         } catch (e) {
           errorData = { error: { message: `DeepSeek API Error (${response.status}): ${text.substring(0, 100)}` } };
         }
-        return res.status(response.status).json(errorData);
+        const statusToReturn = response.status === 401 ? 400 : response.status;
+        return res.status(statusToReturn).json(errorData);
       }
 
       if (stream) {

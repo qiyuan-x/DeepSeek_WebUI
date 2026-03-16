@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./public/pwa-192x192.svg" width="120" height="120" alt="DeepSeek WebUI Logo" />
+  <img src="./public/icon.ico" width="120" height="120" alt="DeepSeek WebUI Logo" />
   <h1>DeepSeek WebUI</h1>
   <p>A professional DeepSeek WebUI client with reasoning display, history persistence, and cost monitoring.</p>
 </div>
@@ -63,35 +63,36 @@ docker-compose up -d
 docker build -t deepseek-webui .
 
 # 运行容器（将本地的 data 目录挂载以持久化数据）
-docker run -d -p 2233:3000 -v $(pwd)/data:/app/data --name deepseek-webui deepseek-webui
+docker run -d -p 2233:2233 -v $(pwd)/data:/app/data --name deepseek-webui deepseek-webui
 ```
 
 ## 🔒 访问控制 (Authentication)
 
-如果你将项目部署在局域网或公网，并希望防止他人直接访问，你可以通过设置环境变量来开启基础身份验证 (Basic Auth)：
+如果你将项目部署在局域网或公网，并希望防止他人直接访问，系统提供了一个基于密钥的访问控制机制：
+
+1. **默认行为**：如果你不设置任何环境变量，系统在首次启动时会自动生成一个 16 位的随机密钥，并保存在 `data/config/secret.key` 文件中。你可以在启动日志（控制台）中看到这个密钥。
+2. **自定义密钥**：你可以通过设置环境变量 `WEBUI_SECRET_KEY` 来指定你自己的访问密钥。
 
 ### Docker Compose 部署：
-编辑 `docker-compose.yml` 文件，取消 `environment` 下面关于密码的注释并设置你的密码：
+编辑 `docker-compose.yml` 文件，取消 `environment` 下面关于密钥的注释并设置你的密钥：
 ```yaml
     environment:
       - NODE_ENV=production
-      - PORT=3000
-      - WEBUI_PASSWORD=your_secure_password  # 设置你的密码
-      - WEBUI_USERNAME=admin                 # (可选) 设置你的用户名，默认为 admin
+      - PORT=2233
+      - WEBUI_SECRET_KEY=your_secure_secret_key  # 设置你的访问密钥
 ```
 然后重新启动容器：`docker-compose up -d`
 
 ### 原生 Docker 命令部署：
 在运行容器时加上 `-e` 参数：
 ```bash
-docker run -d -p 2233:3000 -v $(pwd)/data:/app/data -e WEBUI_PASSWORD=your_secure_password --name deepseek-webui deepseek-webui
+docker run -d -p 2233:2233 -v $(pwd)/data:/app/data -e WEBUI_SECRET_KEY=your_secure_secret_key --name deepseek-webui deepseek-webui
 ```
 
 ### 源码本地运行部署：
 在项目根目录创建一个 `.env` 文件，并添加以下内容：
 ```env
-WEBUI_PASSWORD=your_secure_password
-WEBUI_USERNAME=admin
+WEBUI_SECRET_KEY=your_secure_secret_key
 ```
 然后重启服务即可生效。
 
