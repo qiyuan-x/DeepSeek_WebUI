@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./public/icon.ico" width="120" height="120" alt="DeepSeek WebUI Logo" />
+  <img src="./public/logo.png" width="120" height="120" alt="DeepSeek WebUI Logo" />
   <h1>DeepSeek WebUI</h1>
   <p>A professional DeepSeek WebUI client with reasoning display, history persistence, and cost monitoring.</p>
 </div>

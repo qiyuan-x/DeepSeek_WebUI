@@ -566,7 +566,7 @@ export default function App() {
       <div className="flex h-screen w-screen items-center justify-center bg-[#0A0A0A] text-white font-sans">
         <div className="w-full max-w-md p-8 bg-[#111111] rounded-2xl border border-white/10 shadow-2xl mx-4">
           <div className="flex justify-center mb-6">
-            <img src="/icon.ico" alt="Logo" className="w-16 h-16 rounded-full object-cover shadow-lg" />
+            <img src="/logo.png" alt="Logo" className="w-16 h-16 rounded-full object-cover shadow-lg" />
           </div>
           <h1 className="text-2xl font-bold text-center mb-2">DeepSeek WebUI</h1>
           <p className="text-center text-gray-400 mb-8 text-sm">请输入服务端提供的访问密钥</p>
@@ -959,7 +959,7 @@ export default function App() {
                   "p-2 rounded-full shadow-md",
                   theme === 'dark' ? "bg-white/5" : "bg-white"
                 )}>
-                  <img src="/icon.ico" alt="Logo" className="w-16 h-16 rounded-full object-cover" />
+                  <img src="/logo.png" alt="Logo" className="w-16 h-16 rounded-full object-cover" />
                 </div>
                 <h2 className="text-xl font-bold">今天我能帮您什么？</h2>
                 <p className={cn(
