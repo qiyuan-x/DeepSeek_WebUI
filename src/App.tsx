@@ -563,7 +563,7 @@ export default function App() {
 
   if (isAuthRequired) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#0A0A0A] text-white font-sans">
+      <div className="flex h-[100dvh] w-full items-center justify-center bg-[#0A0A0A] text-white font-sans">
         <div className="w-full max-w-md p-8 bg-[#111111] rounded-2xl border border-white/10 shadow-2xl mx-4">
           <div className="flex justify-center mb-6">
             <img src="/logo.png" alt="Logo" className="w-16 h-16 rounded-full object-cover shadow-lg" />
@@ -610,7 +610,7 @@ export default function App() {
 
   return (
     <div className={cn(
-      "flex h-screen w-screen overflow-hidden font-sans transition-colors duration-300",
+      "flex h-[100dvh] w-full overflow-hidden font-sans transition-colors duration-300",
       theme === 'dark' ? "bg-[#0A0A0A] text-white" : "bg-[#F8F9FA] text-[#1A1A1A]"
     )} style={bgImage ? { backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
       {/* Sidebar */}
@@ -749,7 +749,7 @@ export default function App() {
           "h-14 flex items-center justify-between px-4 border-b shrink-0 transition-colors duration-300",
           theme === 'dark' ? "bg-[#111111]/50 border-white/10" : "bg-white/50 border-[#E5E7EB]"
         )}>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className={cn(
@@ -759,7 +759,7 @@ export default function App() {
             >
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <div className="flex flex-col">
+            <div className="flex flex-col hidden sm:flex">
               <h1 className="text-sm font-bold tracking-tight">DeepSeek WebUI</h1>
               <span className={cn(
                 "text-[10px] uppercase tracking-widest font-semibold",
@@ -773,16 +773,17 @@ export default function App() {
             <button
               onClick={toggleThinkingMode}
               className={cn(
-                "flex items-center gap-2 px-3 py-1 rounded-full transition-all border text-[11px] font-bold uppercase tracking-wider ml-2",
+                "flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 rounded-full transition-all border text-[11px] font-bold uppercase tracking-wider sm:ml-2",
                 isThinkingMode 
                   ? "bg-purple-50 border-purple-200 text-purple-700 shadow-sm" 
                   : "bg-gray-50 border-gray-200 text-gray-600"
               )}
             >
               <Brain size={14} className={isThinkingMode ? "text-purple-600" : "text-gray-400"} />
-              <span>{isThinkingMode ? "深度思考" : "快速回答"}</span>
+              <span className="hidden sm:inline">{isThinkingMode ? "深度思考" : "快速回答"}</span>
+              <span className="sm:hidden">{isThinkingMode ? "深度" : "快速"}</span>
               <div className={cn(
-                "w-7 h-3.5 rounded-full relative transition-colors ml-1",
+                "w-7 h-3.5 rounded-full relative transition-colors ml-0.5 sm:ml-1",
                 isThinkingMode ? "bg-purple-400" : "bg-gray-300"
               )}>
                 <div className={cn(
@@ -794,7 +795,7 @@ export default function App() {
           </div>
 
           {/* Token & Cost Display */}
-          <div className="flex-1 flex justify-center">
+          <div className="flex-1 hidden md:flex justify-center">
             {currentConvId && (
               <div className={cn(
                 "flex items-center gap-4 px-4 py-1.5 border rounded-2xl shadow-sm transition-colors",
@@ -1055,7 +1056,7 @@ export default function App() {
                     handleSendMessage();
                   }
                 }}
-                placeholder="给 DeepSeek 发送消息... (Ctrl + Enter 发送)"
+                placeholder="给 DeepSeek 发送消息..."
                 className={cn(
                   "w-full border-none rounded-2xl px-4 py-[14px] pr-4 text-sm leading-relaxed outline-none resize-none min-h-[52px] max-h-40 flex items-center transition-colors",
                   theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
@@ -1066,14 +1067,29 @@ export default function App() {
             <div className="flex shrink-0">
               {isLoading ? (
                 <button 
-                  onClick={handleStop}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleStop();
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    handleStop();
+                  }}
                   className="p-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors flex items-center justify-center"
                 >
                   <StopCircle size={20} />
                 </button>
               ) : (
                 <button 
-                  onClick={handleSendMessage}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    if (!input.trim()) return;
+                    handleSendMessage();
+                  }}
                   disabled={!input.trim()}
                   className={cn(
                     "p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center",
@@ -1096,18 +1112,18 @@ export default function App() {
         {/* Memory Modal */}
         <AnimatePresence>
           {isMemoryOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 bg-black/20 backdrop-blur-sm">
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
                 className={cn(
-                  "w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]",
+                  "w-full h-full sm:h-auto sm:max-h-[80vh] max-w-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col",
                   theme === 'dark' ? "bg-[#1A1A1A] border border-white/10" : "bg-white border border-[#E5E7EB]"
                 )}
               >
                 <div className={cn(
-                  "p-4 border-b flex justify-between items-center",
+                  "p-4 border-b flex justify-between items-center shrink-0",
                   theme === 'dark' ? "border-white/10" : "border-[#E5E7EB]"
                 )}>
                   <h3 className={cn(
@@ -1249,18 +1265,18 @@ export default function App() {
         {/* Settings Modal */}
         <AnimatePresence>
           {isSettingsOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 bg-black/20 backdrop-blur-sm">
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
                 className={cn(
-                  "w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] transition-colors duration-300",
+                  "w-full h-full sm:h-auto sm:max-h-[90vh] max-w-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-colors duration-300",
                   theme === 'dark' ? "bg-[#1A1A1A] text-white" : "bg-white text-[#1A1A1A]"
                 )}
               >
                 <div className={cn(
-                  "p-6 border-b flex items-center justify-between",
+                  "p-4 sm:p-6 border-b flex items-center justify-between shrink-0",
                   theme === 'dark' ? "border-white/10" : "border-[#F3F4F6]"
                 )}>
                   <div className="flex items-center gap-3">
@@ -1278,7 +1294,7 @@ export default function App() {
                 <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
                   {/* Settings Sidebar Tabs */}
                   <div className={cn(
-                    "w-full md:w-48 border-b md:border-b-0 md:border-r flex md:flex-col p-2 gap-1 overflow-x-auto shrink-0 hide-scrollbar",
+                    "w-full md:w-48 border-b md:border-b-0 md:border-r flex flex-nowrap md:flex-col p-2 gap-1 overflow-x-auto shrink-0 hide-scrollbar",
                     theme === 'dark' ? "border-white/10 bg-white/5" : "border-[#F3F4F6] bg-[#F9FAFB]"
                   )}>
                     {[
@@ -1675,7 +1691,7 @@ export default function App() {
                 </div>
 
                 <div className={cn(
-                  "p-6 border-t flex justify-end gap-3",
+                  "p-4 sm:p-6 border-t flex justify-end gap-3 shrink-0",
                   theme === 'dark' ? "border-white/10" : "border-[#F3F4F6]"
                 )}>
                   <button 
