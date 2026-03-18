@@ -4,7 +4,10 @@ const getAuthHeaders = (extraHeaders: Record<string, string> = {}) => {
   const key = localStorage.getItem('webui_secret_key');
   return {
     ...extraHeaders,
-    ...(key ? { 'x-webui-secret-key': key } : {})
+    ...(key ? { 
+      'x-webui-secret-key': key,
+      'Authorization': `Bearer ${key}`
+    } : {})
   };
 };
 
@@ -110,6 +113,32 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),
     });
+    return res.json();
+  },
+
+  async extractPrompt(text: string, apiKey?: string) {
+    const res = await fetchWithAuth("/api/extract-prompt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, apiKey }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || '提取提示词失败');
+    }
+    return res.json();
+  },
+
+  async generateImage(prompt: string, provider: string, apiKey?: string) {
+    const res = await fetchWithAuth("/api/generate-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, provider, apiKey }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || '生成图片失败');
+    }
     return res.json();
   },
 

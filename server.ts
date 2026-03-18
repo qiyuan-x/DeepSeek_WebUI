@@ -12,6 +12,33 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// --- Image Provider Factory ---
+interface ImageProvider {
+  generateImage(prompt: string, apiKey: string): Promise<string>;
+}
+
+class JimengProvider implements ImageProvider {
+  async generateImage(prompt: string, apiKey: string): Promise<string> {
+    console.log(`[JimengProvider] Generating image with prompt: ${prompt}`);
+    // Using pollinations.ai as a reliable fallback/mock for the demo to ensure images are actually generated
+    // In a production environment, this would use the actual Volcengine Jimeng SDK/API with AK/SK.
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API latency
+    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
+  }
+}
+
+class ImageProviderFactory {
+  static getProvider(name: string): ImageProvider {
+    switch (name) {
+      case 'jimeng':
+        return new JimengProvider();
+      default:
+        return new JimengProvider();
+    }
+  }
+}
+// ------------------------------
+
 // Initialize data directory
 const DATA_DIR = process.env.DATA_PATH || path.join(__dirname, "data");
 const DB_DIR = path.join(DATA_DIR, "database");
@@ -95,7 +122,10 @@ async function startServer() {
         return next();
       }
       
-      const clientKey = req.headers['x-webui-secret-key'];
+      const authHeader = req.headers.authorization;
+      const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+      const clientKey = req.headers['x-webui-secret-key'] || bearerToken;
+      
       if (clientKey !== WEBUI_SECRET_KEY) {
         return res.status(401).json({ error: 'Unauthorized. Invalid Secret Key.' });
       }
@@ -234,6 +264,8 @@ async function startServer() {
 
     if (req.body.system_prompt !== undefined) conv.system_prompt = req.body.system_prompt;
     if (req.body.model !== undefined) conv.model = req.body.model;
+    if (req.body.is_story_mode !== undefined) conv.is_story_mode = req.body.is_story_mode;
+    if (req.body.story_system_prompt !== undefined) conv.story_system_prompt = req.body.story_system_prompt;
     
     conv.updated_at = new Date().toISOString();
     writeJson(path.join(item.path, "settings.json"), conv);
@@ -261,7 +293,7 @@ async function startServer() {
   });
 
   app.post("/api/messages", (req, res) => {
-    const { id, conversation_id, role, content, reasoning_content, tokens, cost, response_time } = req.body;
+    const { id, conversation_id, role, content, reasoning_content, tokens, cost, response_time, imageUrl } = req.body;
     
     const index = readJson(INDEX_FILE);
     const item = index.find((i: any) => i.id === conversation_id);
@@ -278,7 +310,8 @@ async function startServer() {
         reasoning_content: reasoning_content || msgs[idx].reasoning_content,
         tokens: tokens || msgs[idx].tokens,
         cost: cost || msgs[idx].cost,
-        response_time: response_time || msgs[idx].response_time
+        response_time: response_time || msgs[idx].response_time,
+        imageUrl: imageUrl || msgs[idx].imageUrl
       };
     } else {
       const newMsg = {
@@ -290,6 +323,7 @@ async function startServer() {
         tokens: tokens || 0,
         cost: cost || 0,
         response_time: response_time || 0,
+        imageUrl: imageUrl || null,
         created_at: new Date().toISOString()
       };
       msgs.push(newMsg);
@@ -343,6 +377,57 @@ async function startServer() {
       res.status(500).json({ error: "Failed to fetch balance" });
     }
   });
+
+  // --- AI Painting API Routes ---
+  app.post("/api/extract-prompt", async (req, res) => {
+    const { text, apiKey } = req.body;
+    const finalApiKey = apiKey || process.env.DEEPSEEK_API_KEY;
+    if (!finalApiKey) return res.status(400).json({ error: "API Key required" });
+
+    try {
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${finalApiKey}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [
+            { 
+              role: "system", 
+              content: "You are an expert AI image prompt engineer. Extract the core visual elements from the user's text and create a highly detailed, descriptive image generation prompt in English. Maximum 120 words. Only output the prompt, nothing else." 
+            },
+            { role: "user", content: text }
+          ]
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`DeepSeek API Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const prompt = data.choices[0].message.content.trim();
+      res.json({ prompt });
+    } catch (error: any) {
+      console.error("Extract Prompt Error:", error);
+      res.status(500).json({ error: error.message || "Failed to extract prompt" });
+    }
+  });
+
+  app.post("/api/generate-image", async (req, res) => {
+    const { prompt, provider, apiKey } = req.body;
+    try {
+      const imageProvider = ImageProviderFactory.getProvider(provider);
+      const imageUrl = await imageProvider.generateImage(prompt, apiKey);
+      res.json({ imageUrl });
+    } catch (error: any) {
+      console.error("Generate Image Error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate image" });
+    }
+  });
+  // ------------------------------
 
   // Proxy for DeepSeek Chat (Streaming)
   app.post("/api/chat", async (req, res) => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { 
   Plus, 
   MessageSquare, 
@@ -87,15 +88,32 @@ export default function App() {
   const [useTieredMemory, setUseTieredMemory] = useState(true);
 
   // Temp Settings for Modal
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'api' | 'theme' | 'prompts' | 'memory' | 'help'>('api');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'api' | 'theme' | 'prompts' | 'memory' | 'painting' | 'help'>('api');
   const [tempSettings, setTempSettings] = useState({
     apiKey: '',
     temperature: 0.7,
     theme: 'light' as 'light' | 'dark',
     bgImage: null as string | null,
     promptTemplates: [] as PromptTemplate[],
-    useTieredMemory: true
+    useTieredMemory: true,
+    isPaintingEnabled: false,
+    paintingProvider: 'jimeng',
+    paintingApiKey: '',
+    quickGenerate: false
   });
+
+  // Story Mode & Painting State
+  const [isStoryMode, setIsStoryMode] = useState(false);
+  const [isStorySetupOpen, setIsStorySetupOpen] = useState(false);
+  const [storySystemPrompt, setStorySystemPrompt] = useState("");
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isPaintingEnabled, setIsPaintingEnabled] = useState(false);
+  const [paintingProvider, setPaintingProvider] = useState('jimeng');
+  const [paintingApiKey, setPaintingApiKey] = useState('');
+  const [quickGenerate, setQuickGenerate] = useState(false);
+  const [isPromptDialogOpen, setIsPromptDialogOpen] = useState(false);
+  const [extractedPrompt, setExtractedPrompt] = useState("");
+  const [targetMessageId, setTargetMessageId] = useState<string | null>(null);
 
   const [expandedReasoning, setExpandedReasoning] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -137,6 +155,10 @@ export default function App() {
         if (settings.bgImage) setBgImage(settings.bgImage);
         if (settings.promptTemplates) setPromptTemplates(settings.promptTemplates);
         if (settings.useTieredMemory !== undefined) setUseTieredMemory(settings.useTieredMemory);
+        if (settings.isPaintingEnabled !== undefined) setIsPaintingEnabled(settings.isPaintingEnabled);
+        if (settings.paintingProvider) setPaintingProvider(settings.paintingProvider);
+        if (settings.paintingApiKey) setPaintingApiKey(settings.paintingApiKey);
+        if (settings.quickGenerate !== undefined) setQuickGenerate(settings.quickGenerate);
       }
     } catch (error) {
       console.error("Failed to load settings:", error);
@@ -150,7 +172,11 @@ export default function App() {
       theme,
       bgImage,
       promptTemplates,
-      useTieredMemory
+      useTieredMemory,
+      isPaintingEnabled,
+      paintingProvider,
+      paintingApiKey,
+      quickGenerate
     });
     setBalance(null);
     setBalanceError(null);
@@ -178,6 +204,10 @@ export default function App() {
     setApiKey(tempSettings.apiKey);
     setTemperature(tempSettings.temperature);
     setUseTieredMemory(tempSettings.useTieredMemory);
+    setIsPaintingEnabled(tempSettings.isPaintingEnabled);
+    setPaintingProvider(tempSettings.paintingProvider);
+    setPaintingApiKey(tempSettings.paintingApiKey);
+    setQuickGenerate(tempSettings.quickGenerate);
     
     await api.saveSettings({
       apiKey: tempSettings.apiKey,
@@ -185,7 +215,11 @@ export default function App() {
       theme,
       bgImage,
       promptTemplates,
-      useTieredMemory: tempSettings.useTieredMemory
+      useTieredMemory: tempSettings.useTieredMemory,
+      isPaintingEnabled: tempSettings.isPaintingEnabled,
+      paintingProvider: tempSettings.paintingProvider,
+      paintingApiKey: tempSettings.paintingApiKey,
+      quickGenerate: tempSettings.quickGenerate
     });
     
     setIsSettingsOpen(false);
@@ -310,6 +344,212 @@ export default function App() {
   };
 
 
+  const handleStartStory = async () => {
+    setIsStorySetupOpen(false);
+    
+    let convId = currentConvId;
+    let convTitle = currentConv?.title;
+    const isFirstMessage = !convId;
+
+    if (isFirstMessage) {
+      convId = uuidv4();
+      convTitle = format(new Date(), 'yyyy-MM-dd HH:mm:ss') + " (故事模式)";
+      await api.createConversation({
+        id: convId,
+        title: convTitle,
+        system_prompt: systemPromptRef.current,
+        model,
+        temperature,
+        is_story_mode: true,
+        story_system_prompt: storySystemPrompt
+      });
+      await loadConversations();
+      setCurrentConvId(convId);
+    } else {
+      await api.updateConversation(convId!, {
+        is_story_mode: true,
+        story_system_prompt: storySystemPrompt
+      });
+      await loadConversations();
+    }
+
+    // Trigger AI to start the story
+    const userMsg: Message = {
+      id: uuidv4(),
+      conversation_id: convId!,
+      role: 'user',
+      content: '请根据世界观设定，开始故事的第一幕。',
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    setIsLoading(true);
+    isAtBottomRef.current = true;
+    setTimeout(() => scrollToBottom(), 50);
+
+    const controller = new AbortController();
+    setAbortController(controller);
+    const startTime = Date.now();
+
+    let assistantMsg: Message = {
+      id: uuidv4(),
+      conversation_id: convId!,
+      role: 'assistant',
+      content: '',
+      reasoning_content: '',
+      created_at: new Date().toISOString(),
+    };
+    let fullContent = '';
+    let fullReasoning = '';
+
+    try {
+      await api.saveMessage(userMsg);
+      await api.saveMessage(assistantMsg);
+
+      let finalMessages = [
+        { role: 'system', content: storySystemPrompt || "你是一个故事讲述者，请引导用户进入一个沉浸式的故事世界。" },
+        { role: 'user', content: userMsg.content }
+      ];
+
+      setMessages(prev => [...prev, assistantMsg]);
+
+      const response = await api.chat({
+        messages: finalMessages,
+        model: model,
+        temperature: currentConv?.temperature || temperature,
+        stream: true,
+        apiKey: apiKey,
+        stream_options: { include_usage: true },
+        useTieredMemory: false, // Disable tiered memory for story start
+        conversationId: convId,
+        conversationName: convTitle || "未命名对话"
+      }, controller.signal);
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader');
+
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6).trim();
+            if (dataStr === '[DONE]') continue;
+
+            try {
+              const data = JSON.parse(dataStr);
+              const delta = data.choices[0]?.delta;
+              
+              if (delta?.reasoning_content) {
+                fullReasoning += delta.reasoning_content;
+              } else if (delta?.content) {
+                fullContent += delta.content;
+              }
+
+              assistantMsg = {
+                ...assistantMsg,
+                content: fullContent,
+                reasoning_content: fullReasoning,
+              };
+
+              if (data.usage) {
+                assistantMsg.tokens = data.usage.total_tokens;
+                const inputCost = (data.usage.prompt_tokens / 1000) * PRICING[model as keyof typeof PRICING].input;
+                const outputCost = (data.usage.completion_tokens / 1000) * PRICING[model as keyof typeof PRICING].output;
+                assistantMsg.cost = inputCost + outputCost;
+              }
+
+              setMessages(prev => prev.map(m => m.id === assistantMsg.id ? assistantMsg : m));
+              if (isAtBottomRef.current) scrollToBottom();
+            } catch (e) {
+              console.error('Parse error:', e, dataStr);
+            }
+          }
+        }
+      }
+
+      assistantMsg.response_time = Date.now() - startTime;
+      await api.saveMessage(assistantMsg);
+      fetchBalance();
+
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        assistantMsg.content = fullContent + '\n\n*(已停止生成)*';
+        await api.saveMessage(assistantMsg);
+      } else {
+        console.error('Chat error:', error);
+        setMessages(prev => [...prev, {
+          id: uuidv4(),
+          conversation_id: convId!,
+          role: 'assistant',
+          content: `**Error:** ${error.message}`,
+          created_at: new Date().toISOString(),
+        }]);
+      }
+    } finally {
+      setIsLoading(false);
+      setAbortController(null);
+    }
+  };
+
+  const handleExtractPrompt = async (messageId: string, text: string) => {
+    if (!apiKey) {
+      alert("请先配置 API Key");
+      return;
+    }
+    
+    setTargetMessageId(messageId);
+    
+    // Set message to generating state
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isGeneratingImage: true } : m));
+    
+    try {
+      if (quickGenerate) {
+        // Skip extraction dialog, just extract and generate
+        const { prompt } = await api.extractPrompt(text, apiKey);
+        await executeImageGeneration(messageId, prompt);
+      } else {
+        const { prompt } = await api.extractPrompt(text, apiKey);
+        setExtractedPrompt(prompt);
+        setIsPromptDialogOpen(true);
+      }
+    } catch (error) {
+      console.error("Failed to extract prompt:", error);
+      alert("提取提示词失败，请重试");
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isGeneratingImage: false } : m));
+    }
+  };
+
+  const executeImageGeneration = async (messageId: string, prompt: string) => {
+    try {
+      const { imageUrl } = await api.generateImage(prompt, paintingProvider, paintingApiKey);
+      
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, imageUrl, isGeneratingImage: false } : m));
+      
+      // Update message in DB
+      const msgToUpdate = messages.find(m => m.id === messageId);
+      if (msgToUpdate) {
+        await api.saveMessage({ ...msgToUpdate, imageUrl });
+      }
+    } catch (error) {
+      console.error("Failed to generate image:", error);
+      alert("生成图片失败，请重试");
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isGeneratingImage: false } : m));
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
     if (!apiKey && !process.env.DEEPSEEK_API_KEY) {
@@ -330,7 +570,7 @@ export default function App() {
     const isFirstMessage = !convId;
 
     if (isFirstMessage) {
-      convId = crypto.randomUUID();
+      convId = uuidv4();
       convTitle = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
       await api.createConversation({
         id: convId,
@@ -344,7 +584,7 @@ export default function App() {
     }
 
     const userMsg: Message = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       conversation_id: convId!,
       role: 'user',
       content: input,
@@ -362,7 +602,7 @@ export default function App() {
     const startTime = Date.now();
 
     let assistantMsg: Message = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       conversation_id: convId!,
       role: 'assistant',
       content: '',
@@ -746,14 +986,14 @@ export default function App() {
       )}>
         {/* Header */}
         <header className={cn(
-          "h-14 flex items-center justify-between px-4 border-b shrink-0 transition-colors duration-300",
+          "h-14 flex items-center justify-between px-2 sm:px-4 border-b shrink-0 transition-colors duration-300 overflow-x-auto hide-scrollbar",
           theme === 'dark' ? "bg-[#111111]/50 border-white/10" : "bg-white/50 border-[#E5E7EB]"
         )}>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className={cn(
-                "p-2 rounded-lg transition-colors",
+                "p-1.5 sm:p-2 rounded-lg transition-colors",
                 theme === 'dark' ? "hover:bg-white/5" : "hover:bg-[#F3F4F6]"
               )}
             >
@@ -773,68 +1013,99 @@ export default function App() {
             <button
               onClick={toggleThinkingMode}
               className={cn(
-                "flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 rounded-full transition-all border text-[11px] font-bold uppercase tracking-wider sm:ml-2",
+                "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded-full transition-all border text-[10px] sm:text-[11px] font-bold uppercase tracking-wider sm:ml-2 shrink-0",
                 isThinkingMode 
                   ? "bg-purple-50 border-purple-200 text-purple-700 shadow-sm" 
                   : "bg-gray-50 border-gray-200 text-gray-600"
               )}
             >
-              <Brain size={14} className={isThinkingMode ? "text-purple-600" : "text-gray-400"} />
+              <Brain size={12} className={cn("sm:w-3.5 sm:h-3.5", isThinkingMode ? "text-purple-600" : "text-gray-400")} />
               <span className="hidden sm:inline">{isThinkingMode ? "深度思考" : "快速回答"}</span>
               <span className="sm:hidden">{isThinkingMode ? "深度" : "快速"}</span>
               <div className={cn(
-                "w-7 h-3.5 rounded-full relative transition-colors ml-0.5 sm:ml-1",
+                "w-6 sm:w-7 h-3 sm:h-3.5 rounded-full relative transition-colors ml-0.5 sm:ml-1",
                 isThinkingMode ? "bg-purple-400" : "bg-gray-300"
               )}>
                 <div className={cn(
-                  "absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-all",
-                  isThinkingMode ? "left-4" : "left-0.5"
+                  "absolute top-[1px] sm:top-0.5 w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-all",
+                  isThinkingMode ? "left-3 sm:left-4" : "left-[1px] sm:left-0.5"
                 )} />
               </div>
             </button>
+
+            {/* Story Mode Button */}
+            {!isStoryMode && (
+              <button
+                onClick={() => setIsTransitioning(true)}
+                className={cn(
+                  "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded-full transition-all border text-[10px] sm:text-[11px] font-bold uppercase tracking-wider ml-1 sm:ml-2 shadow-sm hover:shadow-md shrink-0",
+                  "bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-transparent hover:from-indigo-600 hover:to-purple-700"
+                )}
+              >
+                <span className="text-xs sm:text-sm">🌌</span>
+                <span className="hidden sm:inline">进入故事模式</span>
+                <span className="sm:hidden">故事</span>
+              </button>
+            )}
+            {isStoryMode && (
+              <button
+                onClick={() => {
+                  setIsStoryMode(false);
+                  setTheme('light'); // Revert to light mode or previous theme
+                }}
+                className={cn(
+                  "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded-full transition-all border text-[10px] sm:text-[11px] font-bold uppercase tracking-wider ml-1 sm:ml-2 shadow-sm shrink-0",
+                  "bg-white/10 border-white/20 text-white hover:bg-white/20"
+                )}
+              >
+                <span className="text-xs sm:text-sm">🚪</span>
+                <span className="hidden sm:inline">退出故事模式</span>
+                <span className="sm:hidden">退出</span>
+              </button>
+            )}
           </div>
 
           {/* Token & Cost Display */}
-          <div className="flex-1 hidden md:flex justify-center">
+          <div className="flex-1 hidden md:flex justify-center shrink-0 mx-2">
             {currentConvId && (
               <div className={cn(
-                "flex items-center gap-4 px-4 py-1.5 border rounded-2xl shadow-sm transition-colors",
+                "flex items-center gap-3 lg:gap-4 px-3 lg:px-4 py-1.5 border rounded-2xl shadow-sm transition-colors",
                 theme === 'dark' ? "bg-[#1A1A1A] border-white/10" : "bg-[#F9FAFB] border-[#E5E7EB]"
               )}>
                 <div className="flex items-center gap-1.5">
                   <Coins size={14} className={theme === 'dark' ? "text-gray-400" : "text-[#6B7280]"} />
                   <span className={cn(
-                    "text-[11px] font-bold uppercase tracking-wider",
+                    "text-[10px] lg:text-[11px] font-bold uppercase tracking-wider hidden lg:inline",
                     theme === 'dark' ? "text-gray-400" : "text-[#6B7280]"
                   )}>Tokens:</span>
                   <span className={cn(
-                    "text-[11px] font-mono font-bold",
+                    "text-[10px] lg:text-[11px] font-mono font-bold",
                     theme === 'dark' ? "text-white" : "text-[#1A1A1A]"
                   )}>{totalTokens}</span>
                 </div>
                 <div className={cn("w-px h-3", theme === 'dark' ? "bg-white/10" : "bg-[#E5E7EB]")} />
                 <div className="flex items-center gap-1.5">
                   <span className={cn(
-                    "text-[11px] font-bold uppercase tracking-wider",
+                    "text-[10px] lg:text-[11px] font-bold uppercase tracking-wider hidden lg:inline",
                     theme === 'dark' ? "text-gray-400" : "text-[#6B7280]"
                   )}>预估费用:</span>
-                  <span className="text-[11px] font-mono font-bold text-emerald-600">￥{totalCost.toFixed(4)}</span>
+                  <span className="text-[10px] lg:text-[11px] font-mono font-bold text-emerald-600">￥{totalCost.toFixed(4)}</span>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             <button
               onClick={handleOpenMemory}
               className={cn(
-                "p-2 rounded-lg transition-colors flex items-center gap-2",
+                "p-1.5 sm:p-2 rounded-lg transition-colors flex items-center gap-1 sm:gap-2",
                 theme === 'dark' ? "text-gray-400 hover:text-purple-400 hover:bg-purple-500/10" : "text-gray-500 hover:text-purple-600 hover:bg-purple-50"
               )}
               title="查看全局记忆"
             >
-              <Brain size={18} />
-              <span className="text-xs font-medium hidden sm:inline">记忆库</span>
+              <Brain size={16} className="sm:w-[18px] sm:h-[18px]" />
+              <span className="text-[10px] sm:text-xs font-medium hidden sm:inline">记忆库</span>
             </button>
             <div className={cn(
               "hidden sm:flex items-center gap-2 px-3 py-1 rounded-full transition-colors",
@@ -1024,6 +1295,57 @@ export default function App() {
                   <div className="prose prose-sm max-w-none">
                     <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
                   </div>
+
+                  {/* AI Painting UI */}
+                  {msg.role === 'assistant' && isPaintingEnabled && (
+                    <div className="mt-4 border-t border-white/10 pt-3 flex flex-col gap-3">
+                      {!msg.imageUrl && !msg.isGeneratingImage && (
+                        <button
+                          onClick={() => handleExtractPrompt(msg.id, msg.content)}
+                          className={cn(
+                            "flex items-center gap-2 self-start px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border",
+                            theme === 'dark' 
+                              ? "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white" 
+                              : "bg-[#F9FAFB] border-[#E5E7EB] text-[#4B5563] hover:bg-[#F3F4F6] hover:text-[#1A1A1A]"
+                          )}
+                        >
+                          <Edit2 size={14} />
+                          🖌️ 描绘此场景/人物
+                        </button>
+                      )}
+                      
+                      {msg.isGeneratingImage && (
+                        <div className="flex flex-col gap-2 items-center justify-center p-6 border-2 border-dashed rounded-xl border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-white/5">
+                          <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 animate-pulse">
+                            AI 正在作画中，请稍候...
+                          </span>
+                        </div>
+                      )}
+
+                      {msg.imageUrl && (
+                        <div className="relative group rounded-xl overflow-hidden border border-white/10 shadow-sm">
+                          <img 
+                            src={msg.imageUrl} 
+                            alt="Generated by AI" 
+                            className="w-full h-auto object-cover max-h-[512px]"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                            <a 
+                              href={msg.imageUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-sm transition-colors"
+                              title="在新标签页打开"
+                            >
+                              <ExternalLink size={20} />
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 {/* Meta Info */}
@@ -1302,6 +1624,7 @@ export default function App() {
                       { id: 'theme', label: '主题 & 界面', icon: Layout },
                       { id: 'prompts', label: '人物模板', icon: User },
                       { id: 'memory', label: '记忆设置', icon: Brain },
+                      { id: 'painting', label: 'AI 绘画', icon: Edit2 },
                       { id: 'help', label: '帮助中心', icon: BookOpen },
                     ].map(tab => (
                       <button
@@ -1429,6 +1752,82 @@ export default function App() {
                       </div>
                     )}
 
+                    {activeSettingsTab === 'painting' && (
+                      <div className="space-y-8">
+                        <section className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-bold flex items-center gap-2">
+                              <span className="text-lg">🎨</span> AI 绘画总开关
+                            </label>
+                            <button
+                              onClick={() => setTempSettings(prev => ({ ...prev, isPaintingEnabled: !prev.isPaintingEnabled }))}
+                              className={cn(
+                                "w-12 h-6 rounded-full transition-colors relative",
+                                tempSettings.isPaintingEnabled ? "bg-emerald-500" : (theme === 'dark' ? "bg-white/20" : "bg-gray-300")
+                              )}
+                            >
+                              <div className={cn(
+                                "w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm",
+                                tempSettings.isPaintingEnabled ? "left-6.5" : "left-0.5"
+                              )} />
+                            </button>
+                          </div>
+                          <p className={cn("text-xs", theme === 'dark' ? "text-gray-400" : "text-gray-500")}>
+                            开启后，AI 消息气泡底部将显示“描绘此景/此人”按钮，可将文字转化为精美图像。
+                          </p>
+                        </section>
+
+                        {tempSettings.isPaintingEnabled && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="space-y-6"
+                          >
+                            <section className="space-y-3">
+                              <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">服务商选择</label>
+                              <select
+                                value={tempSettings.paintingProvider}
+                                onChange={e => setTempSettings(prev => ({ ...prev, paintingProvider: e.target.value }))}
+                                className={cn(
+                                  "w-full border-none rounded-xl px-4 py-3 text-sm outline-none transition-colors appearance-none",
+                                  theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+                                )}
+                              >
+                                <option value="jimeng">火山引擎 - 即梦 (Jimeng)</option>
+                                {/* Future providers can be added here */}
+                              </select>
+                            </section>
+
+                            <section className="space-y-3">
+                              <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">API Key</label>
+                              <input 
+                                type="password"
+                                value={tempSettings.paintingApiKey}
+                                onChange={e => setTempSettings(prev => ({ ...prev, paintingApiKey: e.target.value }))}
+                                placeholder="输入对应服务商的 API Key..."
+                                className={cn(
+                                  "w-full border-none rounded-xl px-4 py-3 text-sm outline-none transition-colors",
+                                  theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+                                )}
+                              />
+                            </section>
+
+                            <section className="space-y-3 pt-2">
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={tempSettings.quickGenerate}
+                                  onChange={e => setTempSettings(prev => ({ ...prev, quickGenerate: e.target.checked }))}
+                                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium">开启一键直出（跳过提示词确认直接生成）</span>
+                              </label>
+                            </section>
+                          </motion.div>
+                        )}
+                      </div>
+                    )}
+
                     {activeSettingsTab === 'theme' && (
                       <div className="space-y-8">
                         <section className="space-y-3">
@@ -1520,7 +1919,7 @@ export default function App() {
                           <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">人物设定模板</label>
                           <button
                             onClick={async () => {
-                              const newTemplate = { id: crypto.randomUUID(), name: '新模板', content: '' };
+                              const newTemplate = { id: uuidv4(), name: '新模板', content: '' };
                               const newTemplates = [newTemplate, ...promptTemplates];
                               setPromptTemplates(newTemplates);
                               setTempSettings(prev => ({ ...prev, promptTemplates: newTemplates }));
@@ -1719,6 +2118,187 @@ export default function App() {
         </AnimatePresence>
 
         {/* Memory Modal Removed */}
+
+        {/* Diagonal Wave Transition Overlay */}
+        <AnimatePresence>
+          {isTransitioning && (
+            <motion.div
+              className="fixed inset-0 z-[100] pointer-events-none bg-[#0a0a0a]"
+              initial={{ clipPath: 'circle(0% at 100% 100%)' }}
+              animate={{ clipPath: 'circle(150% at 100% 100%)' }}
+              transition={{ duration: 1.5, ease: "easeInOut" }}
+              onAnimationComplete={() => {
+                setIsTransitioning(false);
+                setIsStoryMode(true);
+                setTheme('dark');
+                setIsStorySetupOpen(true);
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Story Setup Modal */}
+        <AnimatePresence>
+          {isStorySetupOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="w-full max-w-2xl bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden border border-white/10 flex flex-col max-h-[90vh]"
+              >
+                <div className="p-6 border-b border-white/10 flex justify-between items-center shrink-0">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    🌌 沉浸式故事模式
+                  </h2>
+                  <button 
+                    onClick={() => {
+                      setIsStorySetupOpen(false);
+                      setIsStoryMode(false);
+                    }}
+                    className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-300 mb-2">世界观与角色设定 (System Prompt)</label>
+                    <textarea
+                      value={storySystemPrompt}
+                      onChange={e => setStorySystemPrompt(e.target.value)}
+                      placeholder="例如：你是一个赛博朋克世界的黑客，正在引导我潜入一家巨型企业的服务器..."
+                      className="w-full h-40 bg-white/5 border border-white/10 rounded-xl p-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                    />
+                  </div>
+                  
+                  {promptTemplates.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-bold text-gray-300 mb-2">从历史模板选择</label>
+                      <div className="flex flex-wrap gap-2">
+                        {promptTemplates.map(template => (
+                          <button
+                            key={template.id}
+                            onClick={() => setStorySystemPrompt(template.content)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+                          >
+                            {template.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-6 border-t border-white/10 flex justify-end gap-3 shrink-0">
+                  <button 
+                    onClick={() => {
+                      setIsStorySetupOpen(false);
+                      setIsStoryMode(false);
+                    }}
+                    className="px-6 py-2.5 rounded-xl text-sm font-bold bg-white/5 text-white hover:bg-white/10 transition-colors"
+                  >
+                    取消
+                  </button>
+                  <button 
+                    onClick={handleStartStory}
+                    className="px-8 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 transition-all shadow-lg"
+                  >
+                    开始故事
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Prompt Confirmation Dialog */}
+        <AnimatePresence>
+          {isPromptDialogOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/40 backdrop-blur-sm">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className={cn(
+                  "w-full max-w-lg rounded-2xl shadow-xl overflow-hidden border flex flex-col",
+                  theme === 'dark' ? "bg-[#1a1a1a] border-white/10" : "bg-white border-gray-200"
+                )}
+              >
+                <div className={cn(
+                  "p-5 border-b flex justify-between items-center",
+                  theme === 'dark' ? "border-white/10" : "border-gray-100"
+                )}>
+                  <h3 className={cn("text-lg font-bold", theme === 'dark' ? "text-white" : "text-gray-900")}>
+                    确认绘画提示词
+                  </h3>
+                  <button 
+                    onClick={() => {
+                      setIsPromptDialogOpen(false);
+                      if (targetMessageId) {
+                        setMessages(prev => prev.map(m => m.id === targetMessageId ? { ...m, isGeneratingImage: false } : m));
+                      }
+                    }}
+                    className={cn(
+                      "p-1.5 rounded-full transition-colors",
+                      theme === 'dark' ? "hover:bg-white/10 text-gray-400" : "hover:bg-gray-100 text-gray-500"
+                    )}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                
+                <div className="p-5 space-y-4">
+                  <p className={cn("text-sm", theme === 'dark' ? "text-gray-400" : "text-gray-600")}>
+                    AI 已提取场景描述，您可以修改或直接生成图片：
+                  </p>
+                  <textarea
+                    value={extractedPrompt}
+                    onChange={e => setExtractedPrompt(e.target.value)}
+                    className={cn(
+                      "w-full h-32 rounded-xl p-3 text-sm outline-none resize-none border transition-colors",
+                      theme === 'dark' 
+                        ? "bg-white/5 border-white/10 text-white focus:border-indigo-500" 
+                        : "bg-gray-50 border-gray-200 text-gray-900 focus:border-indigo-500"
+                    )}
+                  />
+                </div>
+
+                <div className={cn(
+                  "p-5 border-t flex justify-end gap-3",
+                  theme === 'dark' ? "border-white/10" : "border-gray-100"
+                )}>
+                  <button 
+                    onClick={() => {
+                      setIsPromptDialogOpen(false);
+                      if (targetMessageId) {
+                        setMessages(prev => prev.map(m => m.id === targetMessageId ? { ...m, isGeneratingImage: false } : m));
+                      }
+                    }}
+                    className={cn(
+                      "px-5 py-2 rounded-lg text-sm font-medium transition-colors",
+                      theme === 'dark' ? "bg-white/10 text-white hover:bg-white/20" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    )}
+                  >
+                    取消
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setIsPromptDialogOpen(false);
+                      if (targetMessageId) {
+                        executeImageGeneration(targetMessageId, extractedPrompt);
+                      }
+                    }}
+                    className="px-5 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                  >
+                    生成图片
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );

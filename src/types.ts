@@ -33,6 +33,8 @@ export interface Message {
   cost?: number;
   response_time?: number;
   created_at?: string;
+  imageUrl?: string;
+  isGeneratingImage?: boolean;
 }
 
 export interface PromptTemplate {
@@ -49,4 +51,6 @@ export interface Conversation {
   temperature: number;
   created_at: string;
   updated_at: string;
+  is_story_mode?: boolean;
+  story_system_prompt?: string;
 }
