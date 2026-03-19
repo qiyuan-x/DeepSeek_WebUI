@@ -82,7 +82,8 @@ async function startServer() {
   const app = express();
   const PORT = process.env.NODE_ENV === 'production' ? 2233 : 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // WebUI Secret Key Auth Middleware
   let WEBUI_SECRET_KEY = process.env.WEBUI_SECRET_KEY;
@@ -266,6 +267,8 @@ async function startServer() {
     if (req.body.model !== undefined) conv.model = req.body.model;
     if (req.body.is_story_mode !== undefined) conv.is_story_mode = req.body.is_story_mode;
     if (req.body.story_system_prompt !== undefined) conv.story_system_prompt = req.body.story_system_prompt;
+    if (req.body.desired_plot !== undefined) conv.desired_plot = req.body.desired_plot;
+    if (req.body.desired_characters !== undefined) conv.desired_characters = req.body.desired_characters;
     
     conv.updated_at = new Date().toISOString();
     writeJson(path.join(item.path, "settings.json"), conv);

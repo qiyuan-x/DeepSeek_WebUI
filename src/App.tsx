@@ -79,22 +79,29 @@ export default function App() {
   }, [systemPrompt]);
   const [isEditingSystemPrompt, setIsEditingSystemPrompt] = useState(false);
   const [draftSystemPrompt, setDraftSystemPrompt] = useState("");
+  const [desiredPlot, setDesiredPlot] = useState("");
+  const [desiredCharacters, setDesiredCharacters] = useState("");
+  const [draftDesiredPlot, setDraftDesiredPlot] = useState("");
+  const [draftDesiredCharacters, setDraftDesiredCharacters] = useState("");
   const [temperature, setTemperature] = useState(0.7);
   const [balance, setBalance] = useState<any>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [previousTheme, setPreviousTheme] = useState<'light' | 'dark'>('light');
   const [bgImage, setBgImage] = useState<string | null>(null);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
+  const [storyTemplates, setStoryTemplates] = useState<PromptTemplate[]>([]);
   const [useTieredMemory, setUseTieredMemory] = useState(true);
 
   // Temp Settings for Modal
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'api' | 'theme' | 'prompts' | 'memory' | 'painting' | 'help'>('api');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'api' | 'theme' | 'templates' | 'advanced' | 'help'>('api');
   const [tempSettings, setTempSettings] = useState({
     apiKey: '',
     temperature: 0.7,
     theme: 'light' as 'light' | 'dark',
     bgImage: null as string | null,
     promptTemplates: [] as PromptTemplate[],
+    storyTemplates: [] as PromptTemplate[],
     useTieredMemory: true,
     isPaintingEnabled: false,
     paintingProvider: 'jimeng',
@@ -105,8 +112,8 @@ export default function App() {
   // Story Mode & Painting State
   const [isStoryMode, setIsStoryMode] = useState(false);
   const [isStorySetupOpen, setIsStorySetupOpen] = useState(false);
-  const [storySystemPrompt, setStorySystemPrompt] = useState("");
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isExitingStoryMode, setIsExitingStoryMode] = useState(false);
   const [isPaintingEnabled, setIsPaintingEnabled] = useState(false);
   const [paintingProvider, setPaintingProvider] = useState('jimeng');
   const [paintingApiKey, setPaintingApiKey] = useState('');
@@ -119,6 +126,7 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
+  const isUserInteractingRef = useRef(false);
 
   const currentConv = conversations.find(c => c.id === currentConvId);
 
@@ -129,6 +137,16 @@ export default function App() {
     const atBottom = scrollHeight - scrollTop - clientHeight < 100;
     isAtBottomRef.current = atBottom;
   }, []);
+
+  const handleInteractionStart = () => {
+    isUserInteractingRef.current = true;
+  };
+
+  const handleInteractionEnd = () => {
+    setTimeout(() => {
+      isUserInteractingRef.current = false;
+    }, 1000);
+  };
 
   // Load initial data
   useEffect(() => {
@@ -154,6 +172,7 @@ export default function App() {
         if (settings.theme) setTheme(settings.theme);
         if (settings.bgImage) setBgImage(settings.bgImage);
         if (settings.promptTemplates) setPromptTemplates(settings.promptTemplates);
+        if (settings.storyTemplates) setStoryTemplates(settings.storyTemplates);
         if (settings.useTieredMemory !== undefined) setUseTieredMemory(settings.useTieredMemory);
         if (settings.isPaintingEnabled !== undefined) setIsPaintingEnabled(settings.isPaintingEnabled);
         if (settings.paintingProvider) setPaintingProvider(settings.paintingProvider);
@@ -172,6 +191,7 @@ export default function App() {
       theme,
       bgImage,
       promptTemplates,
+      storyTemplates,
       useTieredMemory,
       isPaintingEnabled,
       paintingProvider,
@@ -239,6 +259,7 @@ export default function App() {
           theme,
           bgImage: result,
           promptTemplates,
+          storyTemplates,
           useTieredMemory
         });
       };
@@ -246,19 +267,40 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    if (currentConvId) {
-      loadMessages(currentConvId);
-      setSystemPrompt(currentConv?.system_prompt || '');
-      setIsEditingSystemPrompt(false);
-    } else {
-      setMessages([]);
-      setIsEditingSystemPrompt(false);
-    }
-  }, [currentConvId]);
+  const lastLoadedConvId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (isAtBottomRef.current) {
+    if (currentConvId !== lastLoadedConvId.current) {
+      lastLoadedConvId.current = currentConvId;
+      if (currentConvId) {
+        loadMessages(currentConvId);
+        const conv = conversations.find(c => c.id === currentConvId);
+        setSystemPrompt(conv?.system_prompt || '');
+        setIsEditingSystemPrompt(false);
+        if (conv?.is_story_mode) {
+          setIsStoryMode(true);
+          setDesiredPlot(conv.desired_plot || '');
+          setDesiredCharacters(conv.desired_characters || '');
+          setTheme('dark');
+        } else {
+          setIsStoryMode(false);
+          setDesiredPlot('');
+          setDesiredCharacters('');
+          setTheme(prev => prev === 'dark' && previousTheme !== 'dark' ? previousTheme : prev);
+        }
+      } else {
+        setMessages([]);
+        setIsEditingSystemPrompt(false);
+        setIsStoryMode(false);
+        setDesiredPlot('');
+        setDesiredCharacters('');
+        setTheme(prev => prev === 'dark' && previousTheme !== 'dark' ? previousTheme : prev);
+      }
+    }
+  }, [currentConvId, conversations, previousTheme]);
+
+  useEffect(() => {
+    if (isAtBottomRef.current && !isUserInteractingRef.current) {
       scrollToBottom();
     }
   }, [messages]);
@@ -295,6 +337,10 @@ export default function App() {
     setSystemPrompt('');
     setDraftSystemPrompt('');
     setIsEditingSystemPrompt(false);
+    setIsStoryMode(false);
+    setDesiredPlot('');
+    setDesiredCharacters('');
+    setTheme(prev => prev === 'dark' && previousTheme !== 'dark' ? previousTheme : prev);
     setIsSidebarOpen(window.innerWidth > 1024);
   };
 
@@ -306,6 +352,11 @@ export default function App() {
         setMessages([]);
         setSystemPrompt('');
         setDraftSystemPrompt('');
+        setIsEditingSystemPrompt(false);
+        setIsStoryMode(false);
+        setDesiredPlot('');
+        setDesiredCharacters('');
+        setTheme(prev => prev === 'dark' && previousTheme !== 'dark' ? previousTheme : prev);
       }
       await loadConversations();
     } catch (error: any) {
@@ -326,15 +377,27 @@ export default function App() {
     return (inputTokens * rates.input + outputTokens * rates.output) / 1000;
   };
 
-  const handleUpdateSystemPrompt = async (newPrompt: string) => {
+  const handleUpdateSystemPrompt = async (newPrompt: string, newPlot?: string, newCharacters?: string) => {
     setSystemPrompt(newPrompt);
     systemPromptRef.current = newPrompt;
+    if (newPlot !== undefined) setDesiredPlot(newPlot);
+    if (newCharacters !== undefined) setDesiredCharacters(newCharacters);
+    
     if (currentConvId) {
       try {
-        await api.updateConversation(currentConvId, { system_prompt: newPrompt });
+        await api.updateConversation(currentConvId, { 
+          system_prompt: newPrompt,
+          desired_plot: newPlot !== undefined ? newPlot : desiredPlot,
+          desired_characters: newCharacters !== undefined ? newCharacters : desiredCharacters
+        });
         // Update local state for conversations list
         setConversations(prev => prev.map(c => 
-          c.id === currentConvId ? { ...c, system_prompt: newPrompt } : c
+          c.id === currentConvId ? { 
+            ...c, 
+            system_prompt: newPrompt,
+            desired_plot: newPlot !== undefined ? newPlot : desiredPlot,
+            desired_characters: newCharacters !== undefined ? newCharacters : desiredCharacters
+          } : c
         ));
       } catch (error) {
         console.error('Failed to update system prompt:', error);
@@ -344,165 +407,7 @@ export default function App() {
   };
 
 
-  const handleStartStory = async () => {
-    setIsStorySetupOpen(false);
-    
-    let convId = currentConvId;
-    let convTitle = currentConv?.title;
-    const isFirstMessage = !convId;
 
-    if (isFirstMessage) {
-      convId = uuidv4();
-      convTitle = format(new Date(), 'yyyy-MM-dd HH:mm:ss') + " (故事模式)";
-      await api.createConversation({
-        id: convId,
-        title: convTitle,
-        system_prompt: systemPromptRef.current,
-        model,
-        temperature,
-        is_story_mode: true,
-        story_system_prompt: storySystemPrompt
-      });
-      await loadConversations();
-      setCurrentConvId(convId);
-    } else {
-      await api.updateConversation(convId!, {
-        is_story_mode: true,
-        story_system_prompt: storySystemPrompt
-      });
-      await loadConversations();
-    }
-
-    // Trigger AI to start the story
-    const userMsg: Message = {
-      id: uuidv4(),
-      conversation_id: convId!,
-      role: 'user',
-      content: '请根据世界观设定，开始故事的第一幕。',
-      created_at: new Date().toISOString(),
-    };
-
-    setMessages(prev => [...prev, userMsg]);
-    setIsLoading(true);
-    isAtBottomRef.current = true;
-    setTimeout(() => scrollToBottom(), 50);
-
-    const controller = new AbortController();
-    setAbortController(controller);
-    const startTime = Date.now();
-
-    let assistantMsg: Message = {
-      id: uuidv4(),
-      conversation_id: convId!,
-      role: 'assistant',
-      content: '',
-      reasoning_content: '',
-      created_at: new Date().toISOString(),
-    };
-    let fullContent = '';
-    let fullReasoning = '';
-
-    try {
-      await api.saveMessage(userMsg);
-      await api.saveMessage(assistantMsg);
-
-      let finalMessages = [
-        { role: 'system', content: storySystemPrompt || "你是一个故事讲述者，请引导用户进入一个沉浸式的故事世界。" },
-        { role: 'user', content: userMsg.content }
-      ];
-
-      setMessages(prev => [...prev, assistantMsg]);
-
-      const response = await api.chat({
-        messages: finalMessages,
-        model: model,
-        temperature: currentConv?.temperature || temperature,
-        stream: true,
-        apiKey: apiKey,
-        stream_options: { include_usage: true },
-        useTieredMemory: false, // Disable tiered memory for story start
-        conversationId: convId,
-        conversationName: convTitle || "未命名对话"
-      }, controller.signal);
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No reader');
-
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6).trim();
-            if (dataStr === '[DONE]') continue;
-
-            try {
-              const data = JSON.parse(dataStr);
-              const delta = data.choices[0]?.delta;
-              
-              if (delta?.reasoning_content) {
-                fullReasoning += delta.reasoning_content;
-              } else if (delta?.content) {
-                fullContent += delta.content;
-              }
-
-              assistantMsg = {
-                ...assistantMsg,
-                content: fullContent,
-                reasoning_content: fullReasoning,
-              };
-
-              if (data.usage) {
-                assistantMsg.tokens = data.usage.total_tokens;
-                const inputCost = (data.usage.prompt_tokens / 1000) * PRICING[model as keyof typeof PRICING].input;
-                const outputCost = (data.usage.completion_tokens / 1000) * PRICING[model as keyof typeof PRICING].output;
-                assistantMsg.cost = inputCost + outputCost;
-              }
-
-              setMessages(prev => prev.map(m => m.id === assistantMsg.id ? assistantMsg : m));
-              if (isAtBottomRef.current) scrollToBottom();
-            } catch (e) {
-              console.error('Parse error:', e, dataStr);
-            }
-          }
-        }
-      }
-
-      assistantMsg.response_time = Date.now() - startTime;
-      await api.saveMessage(assistantMsg);
-      fetchBalance();
-
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        assistantMsg.content = fullContent + '\n\n*(已停止生成)*';
-        await api.saveMessage(assistantMsg);
-      } else {
-        console.error('Chat error:', error);
-        setMessages(prev => [...prev, {
-          id: uuidv4(),
-          conversation_id: convId!,
-          role: 'assistant',
-          content: `**Error:** ${error.message}`,
-          created_at: new Date().toISOString(),
-        }]);
-      }
-    } finally {
-      setIsLoading(false);
-      setAbortController(null);
-    }
-  };
 
   const handleExtractPrompt = async (messageId: string, text: string) => {
     if (!apiKey) {
@@ -558,11 +463,24 @@ export default function App() {
       return;
     }
 
-    let sysPrompt = systemPromptRef.current;
+    let baseSysPrompt = systemPromptRef.current;
+    let currentDesiredPlot = desiredPlot;
+    let currentDesiredCharacters = desiredCharacters;
     
     if (isEditingSystemPrompt) {
-      sysPrompt = draftSystemPrompt;
-      handleUpdateSystemPrompt(draftSystemPrompt);
+      baseSysPrompt = draftSystemPrompt;
+      currentDesiredPlot = draftDesiredPlot;
+      currentDesiredCharacters = draftDesiredCharacters;
+      handleUpdateSystemPrompt(draftSystemPrompt, draftDesiredPlot, draftDesiredCharacters);
+      setIsEditingSystemPrompt(false);
+    }
+
+    let finalSysPrompt = baseSysPrompt;
+    if (isStoryMode && (currentDesiredPlot || currentDesiredCharacters)) {
+      finalSysPrompt += `\n\n【故事命运线指引】\n`;
+      if (currentDesiredPlot) finalSysPrompt += `期望的情节：${currentDesiredPlot}\n`;
+      if (currentDesiredCharacters) finalSysPrompt += `期望出现的人物：${currentDesiredCharacters}\n`;
+      finalSysPrompt += `请注意：请根据以上指引逐步推进剧情，不要一次性完成所有期望的情节，要保持故事的悬念和互动性。`;
     }
 
     let convId = currentConvId;
@@ -572,12 +490,18 @@ export default function App() {
     if (isFirstMessage) {
       convId = uuidv4();
       convTitle = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+      if (isStoryMode) {
+        convTitle += " (故事模式)";
+      }
       await api.createConversation({
         id: convId,
         title: convTitle,
-        system_prompt: sysPrompt,
+        system_prompt: baseSysPrompt,
         model,
         temperature,
+        is_story_mode: isStoryMode,
+        desired_plot: isStoryMode ? currentDesiredPlot : undefined,
+        desired_characters: isStoryMode ? currentDesiredCharacters : undefined
       });
       await loadConversations();
       setCurrentConvId(convId);
@@ -626,7 +550,7 @@ export default function App() {
       }
 
       let finalMessages = [
-        ...(sysPrompt ? [{ role: 'system', content: sysPrompt }] : []),
+        ...(finalSysPrompt ? [{ role: 'system', content: finalSysPrompt }] : []),
         ...chatHistory,
         { role: 'user', content: userMsg.content }
       ];
@@ -656,9 +580,19 @@ export default function App() {
       }, controller.signal);
 
       if (!response.ok) {
-        const err = await response.json();
-        const errMsg = typeof err.error === 'string' ? err.error : err.error?.message;
-        throw new Error(errMsg || '连接 DeepSeek 失败');
+        const text = await response.text();
+        let errMsg = '连接 DeepSeek 失败';
+        try {
+          const err = JSON.parse(text);
+          errMsg = typeof err.error === 'string' ? err.error : err.error?.message || errMsg;
+        } catch (e) {
+          if (response.status === 413) {
+            errMsg = '对话内容过长，超出了服务器限制。请开启新对话或清理历史记录。';
+          } else {
+            errMsg = `服务器错误 (${response.status}): ${text.substring(0, 100)}`;
+          }
+        }
+        throw new Error(errMsg);
       }
 
       const reader = response.body?.getReader();
@@ -666,17 +600,20 @@ export default function App() {
 
       let isReasoning = false;
       let usage: any = null;
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader!.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6);
+            const dataStr = line.slice(6).trim();
             if (dataStr === '[DONE]') continue;
             try {
               const data = JSON.parse(dataStr);
@@ -719,6 +656,33 @@ export default function App() {
         }
       }
 
+      if (buffer) {
+        const lines = buffer.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6).trim();
+            if (dataStr === '[DONE]') continue;
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.usage) {
+                usage = data.usage;
+                continue;
+              }
+              if (!data.choices || data.choices.length === 0) continue;
+              const delta = data.choices[0].delta;
+              if (delta.reasoning_content) {
+                fullReasoning += delta.reasoning_content;
+                setMessages(prev => prev.map(m => m.id === assistantMsg.id ? { ...m, reasoning_content: fullReasoning } : m));
+              }
+              if (delta.content) {
+                fullContent += delta.content;
+                setMessages(prev => prev.map(m => m.id === assistantMsg.id ? { ...m, content: fullContent } : m));
+              }
+            } catch (e) {}
+          }
+        }
+      }
+
       const finalCost = usage ? calculateCost(currentConv?.model || model, usage.prompt_tokens, usage.completion_tokens) : 0;
       const endTime = Date.now();
       const responseTime = (endTime - startTime) / 1000;
@@ -744,9 +708,10 @@ export default function App() {
       }
 
     } catch (error: any) {
+      const endTime = Date.now();
+      const responseTime = (endTime - startTime) / 1000;
+      
       if (error.name === 'AbortError') {
-        const endTime = Date.now();
-        const responseTime = (endTime - startTime) / 1000;
         const finalContent = fullContent + '\n\n[用户取消输出]';
         
         await api.saveMessage({
@@ -763,9 +728,27 @@ export default function App() {
         ));
         return;
       }
-      setMessages(prev => prev.filter(m => m.id !== assistantMsg.id));
-      api.deleteMessage(assistantMsg.id).catch(console.error);
-      alert(error.message);
+
+      if (fullContent.trim() !== '' || fullReasoning.trim() !== '') {
+        const finalContent = fullContent + `\n\n[网络连接中断: ${error.message}]`;
+        
+        await api.saveMessage({
+          ...assistantMsg,
+          content: finalContent,
+          reasoning_content: fullReasoning,
+          tokens: 0, 
+          cost: 0,
+          response_time: responseTime
+        });
+        
+        setMessages(prev => prev.map(m => 
+          m.id === assistantMsg.id ? { ...m, content: finalContent, response_time: responseTime } : m
+        ));
+      } else {
+        setMessages(prev => prev.filter(m => m.id !== assistantMsg.id));
+        api.deleteMessage(assistantMsg.id).catch(console.error);
+        alert(error.message);
+      }
     } finally {
       setIsLoading(false);
       setAbortController(null);
@@ -1036,7 +1019,10 @@ export default function App() {
             {/* Story Mode Button */}
             {!isStoryMode && (
               <button
-                onClick={() => setIsTransitioning(true)}
+                onClick={() => {
+                  setPreviousTheme(theme);
+                  setIsTransitioning(true);
+                }}
                 className={cn(
                   "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded-full transition-all border text-[10px] sm:text-[11px] font-bold uppercase tracking-wider ml-1 sm:ml-2 shadow-sm hover:shadow-md shrink-0",
                   "bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-transparent hover:from-indigo-600 hover:to-purple-700"
@@ -1050,8 +1036,7 @@ export default function App() {
             {isStoryMode && (
               <button
                 onClick={() => {
-                  setIsStoryMode(false);
-                  setTheme('light'); // Revert to light mode or previous theme
+                  setIsExitingStoryMode(true);
                 }}
                 className={cn(
                   "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded-full transition-all border text-[10px] sm:text-[11px] font-bold uppercase tracking-wider ml-1 sm:ml-2 shadow-sm shrink-0",
@@ -1125,7 +1110,7 @@ export default function App() {
           </div>
         </header>
 
-        {/* System Prompt Bar (人物设定) */}
+        {/* System Prompt Bar (AI设定) / Story Destiny Line */}
         <div className={cn(
           "px-4 py-2 border-b transition-colors duration-300",
           theme === 'dark' ? "bg-[#111111]/50 border-white/10" : "bg-[#F9FAFB] border-[#E5E7EB]"
@@ -1136,13 +1121,13 @@ export default function App() {
                 <span className={cn(
                   "text-xs font-bold uppercase shrink-0",
                   theme === 'dark' ? "text-gray-500" : "text-[#6B7280]"
-                )}>人物设定:</span>
+                )}>{isStoryMode ? "故事命运线与底层设定:" : "AI设定:"}</span>
                 {!isEditingSystemPrompt && (
                   <span className={cn(
                     "text-xs truncate max-w-[400px]",
                     theme === 'dark' ? "text-gray-300" : "text-[#4B5563]"
                   )}>
-                    {systemPrompt || '未设定'}
+                    {isStoryMode ? (desiredPlot || desiredCharacters || systemPrompt || '未设定') : (systemPrompt || '未设定')}
                   </span>
                 )}
               </div>
@@ -1151,6 +1136,8 @@ export default function App() {
                   onClick={() => {
                     if (!isEditingSystemPrompt) {
                       setDraftSystemPrompt(systemPrompt || "");
+                      setDraftDesiredPlot(desiredPlot || "");
+                      setDraftDesiredCharacters(desiredCharacters || "");
                     }
                     setIsEditingSystemPrompt(!isEditingSystemPrompt);
                   }}
@@ -1159,7 +1146,7 @@ export default function App() {
                     theme === 'dark' ? "text-white" : "text-[#1A1A1A]"
                   )}
                 >
-                  {isEditingSystemPrompt ? '收起' : (systemPrompt ? '修改' : '点击设定')}
+                  {isEditingSystemPrompt ? '收起' : (systemPrompt || isStoryMode ? '修改' : '点击设定')}
                 </button>
               </div>
             </div>
@@ -1194,21 +1181,46 @@ export default function App() {
                     <textarea 
                       value={draftSystemPrompt}
                       onChange={e => setDraftSystemPrompt(e.target.value)}
-                      placeholder="设定 AI 角色、语气或特定规则..."
+                      placeholder="设定AI的回复规则。这是AI遵循的最底层的规则..."
                       className={cn(
                         "w-full rounded-lg px-3 py-3 text-sm outline-none min-h-[100px] resize-none transition-colors border",
                         theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:ring-1 focus:ring-white/20" : "bg-white border-[#E5E7EB] text-[#4B5563] focus:ring-1 focus:ring-[#1A1A1A]"
                       )}
                     />
-                    <div className="flex justify-end">
+                    {isStoryMode && (
+                      <>
+                        <textarea 
+                          value={draftDesiredPlot}
+                          onChange={e => setDraftDesiredPlot(e.target.value)}
+                          placeholder="期望的情节 (例如：接下来主角会遇到一个神秘的商人...)"
+                          className={cn(
+                            "w-full rounded-lg px-3 py-3 text-sm outline-none min-h-[80px] resize-none transition-colors border mt-2",
+                            theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:ring-1 focus:ring-white/20" : "bg-white border-[#E5E7EB] text-[#4B5563] focus:ring-1 focus:ring-[#1A1A1A]"
+                          )}
+                        />
+                        <textarea 
+                          value={draftDesiredCharacters}
+                          onChange={e => setDraftDesiredCharacters(e.target.value)}
+                          placeholder="期望出现的人物 (例如：一个名叫艾莉丝的精灵法师...)"
+                          className={cn(
+                            "w-full rounded-lg px-3 py-3 text-sm outline-none min-h-[80px] resize-none transition-colors border mt-2",
+                            theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:ring-1 focus:ring-white/20" : "bg-white border-[#E5E7EB] text-[#4B5563] focus:ring-1 focus:ring-[#1A1A1A]"
+                          )}
+                        />
+                      </>
+                    )}
+                    <div className="flex justify-end mt-2">
                       <button 
-                        onClick={() => handleUpdateSystemPrompt(draftSystemPrompt)}
+                        onClick={() => {
+                          handleUpdateSystemPrompt(draftSystemPrompt, draftDesiredPlot, draftDesiredCharacters);
+                          setIsEditingSystemPrompt(false);
+                        }}
                         className={cn(
                           "px-4 py-2 rounded-lg text-xs font-bold transition-colors",
                           theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]"
                         )}
                       >
-                        确认
+                        {isStoryMode ? "修改故事命运线" : "确认"}
                       </button>
                     </div>
                   </div>
@@ -1222,6 +1234,10 @@ export default function App() {
         <div 
           ref={chatContainerRef}
           onScroll={handleScroll}
+          onTouchStart={handleInteractionStart}
+          onTouchEnd={handleInteractionEnd}
+          onMouseDown={handleInteractionStart}
+          onMouseUp={handleInteractionEnd}
           className="flex-1 overflow-y-auto"
         >
           <div className="max-w-3xl mx-auto py-6 px-4 space-y-8">
@@ -1381,7 +1397,7 @@ export default function App() {
                 placeholder="给 DeepSeek 发送消息..."
                 className={cn(
                   "w-full border-none rounded-2xl px-4 py-[14px] pr-4 text-sm leading-relaxed outline-none resize-none min-h-[52px] max-h-40 flex items-center transition-colors",
-                  theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+                  theme === 'dark' ? "bg-white/5 text-white placeholder:text-gray-500 focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] placeholder:text-gray-400 focus:ring-1 focus:ring-[#1A1A1A]"
                 )}
                 rows={1}
               />
@@ -1424,10 +1440,11 @@ export default function App() {
             </div>
           </div>
           <p className={cn(
-            "text-[10px] text-center mt-2 font-medium transition-colors",
+            "text-[10px] text-center mt-2 font-medium transition-colors flex items-center justify-center gap-2",
             theme === 'dark' ? "text-gray-500" : "text-[#9CA3AF]"
           )}>
-            DeepSeek 可能会犯错。请核查重要信息。
+            <span>DeepSeek 可能会犯错。请核查重要信息。</span>
+            <span className="opacity-50">v1.0.2</span>
           </p>
         </div>
 
@@ -1622,9 +1639,8 @@ export default function App() {
                     {[
                       { id: 'api', label: 'API & 模型', icon: Send },
                       { id: 'theme', label: '主题 & 界面', icon: Layout },
-                      { id: 'prompts', label: '人物模板', icon: User },
-                      { id: 'memory', label: '记忆设置', icon: Brain },
-                      { id: 'painting', label: 'AI 绘画', icon: Edit2 },
+                      { id: 'templates', label: '模板设置', icon: User },
+                      { id: 'advanced', label: '高级设置', icon: Settings },
                       { id: 'help', label: '帮助中心', icon: BookOpen },
                     ].map(tab => (
                       <button
@@ -1752,9 +1768,34 @@ export default function App() {
                       </div>
                     )}
 
-                    {activeSettingsTab === 'painting' && (
+                    {activeSettingsTab === 'advanced' && (
                       <div className="space-y-8">
+                        {/* Memory Settings */}
                         <section className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col gap-1">
+                              <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">层级记忆管理 (Tiered Memory)</label>
+                              <p className={cn("text-[10px]", theme === 'dark' ? "text-gray-500" : "text-[#9CA3AF]")}>
+                                开启后，系统将使用 SQLite 存储长期事实，并根据当前对话自动检索。
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => setTempSettings(prev => ({ ...prev, useTieredMemory: !prev.useTieredMemory }))}
+                              className={cn(
+                                "w-12 h-6 rounded-full relative transition-colors",
+                                tempSettings.useTieredMemory ? "bg-emerald-500" : "bg-gray-300"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all",
+                                tempSettings.useTieredMemory ? "left-7" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+                        </section>
+
+                        {/* AI Painting Settings */}
+                        <section className="space-y-4 pt-6 border-t border-dashed border-gray-200 dark:border-white/10">
                           <div className="flex items-center justify-between">
                             <label className="text-sm font-bold flex items-center gap-2">
                               <span className="text-lg">🎨</span> AI 绘画总开关
@@ -1837,7 +1878,7 @@ export default function App() {
                               onClick={async () => {
                                 setTheme('light');
                                 setTempSettings(prev => ({ ...prev, theme: 'light' }));
-                                await api.saveSettings({ apiKey, temperature, theme: 'light', bgImage, promptTemplates });
+                                await api.saveSettings({ apiKey, temperature, theme: 'light', bgImage, promptTemplates, storyTemplates });
                               }}
                               className={cn(
                                 "p-4 text-center rounded-2xl border transition-all flex flex-col items-center gap-2",
@@ -1855,7 +1896,7 @@ export default function App() {
                               onClick={async () => {
                                 setTheme('dark');
                                 setTempSettings(prev => ({ ...prev, theme: 'dark' }));
-                                await api.saveSettings({ apiKey, temperature, theme: 'dark', bgImage, promptTemplates });
+                                await api.saveSettings({ apiKey, temperature, theme: 'dark', bgImage, promptTemplates, storyTemplates });
                               }}
                               className={cn(
                                 "p-4 text-center rounded-2xl border transition-all flex flex-col items-center gap-2",
@@ -1886,7 +1927,7 @@ export default function App() {
                                     onClick={async () => {
                                       setBgImage(null);
                                       setTempSettings(prev => ({ ...prev, bgImage: null }));
-                                      await api.saveSettings({ apiKey, temperature, theme, bgImage: null, promptTemplates });
+                                      await api.saveSettings({ apiKey, temperature, theme, bgImage: null, promptTemplates, storyTemplates });
                                     }}
                                     className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 z-10"
                                   >
@@ -1913,120 +1954,185 @@ export default function App() {
                       </div>
                     )}
 
-                    {activeSettingsTab === 'prompts' && (
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">人物设定模板</label>
-                          <button
-                            onClick={async () => {
-                              const newTemplate = { id: uuidv4(), name: '新模板', content: '' };
-                              const newTemplates = [newTemplate, ...promptTemplates];
-                              setPromptTemplates(newTemplates);
-                              setTempSettings(prev => ({ ...prev, promptTemplates: newTemplates }));
-                              await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates: newTemplates });
-                            }}
-                            className={cn(
-                              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors",
-                              theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]"
-                            )}
-                          >
-                            <Plus size={14} />
-                            新建模板
-                          </button>
-                        </div>
-
-                        <div className="space-y-4">
-                          {promptTemplates.length === 0 ? (
-                            <div className={cn(
-                              "p-8 text-center rounded-2xl border-2 border-dashed",
-                              theme === 'dark' ? "border-white/5 text-gray-500" : "border-[#F3F4F6] text-[#9CA3AF]"
-                            )}>
-                              <User size={32} className="mx-auto mb-2 opacity-20" />
-                              <p className="text-xs font-medium">暂无模板，点击上方按钮新建</p>
-                            </div>
-                          ) : (
-                            promptTemplates.map(template => (
-                              <div
-                                key={template.id}
-                                className={cn(
-                                  "p-4 rounded-2xl border transition-all space-y-3",
-                                  theme === 'dark' ? "bg-white/5 border-white/10" : "bg-white border-[#E5E7EB]"
-                                )}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <input
-                                    value={template.name}
-                                    onChange={async (e) => {
-                                      const newTemplates = promptTemplates.map(t => t.id === template.id ? { ...t, name: e.target.value } : t);
-                                      setPromptTemplates(newTemplates);
-                                      setTempSettings(prev => ({ ...prev, promptTemplates: newTemplates }));
-                                      await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates: newTemplates });
-                                    }}
-                                    placeholder="模板名称"
-                                    className={cn(
-                                      "flex-1 bg-transparent border-none outline-none text-sm font-bold",
-                                      theme === 'dark' ? "text-white" : "text-[#1A1A1A]"
-                                    )}
-                                  />
-                                  <button
-                                    onClick={async () => {
-                                      const newTemplates = promptTemplates.filter(t => t.id !== template.id);
-                                      setPromptTemplates(newTemplates);
-                                      setTempSettings(prev => ({ ...prev, promptTemplates: newTemplates }));
-                                      await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates: newTemplates });
-                                    }}
-                                    className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                                <textarea
-                                  value={template.content}
-                                  onChange={async (e) => {
-                                    const newTemplates = promptTemplates.map(t => t.id === template.id ? { ...t, content: e.target.value } : t);
-                                    setPromptTemplates(newTemplates);
-                                    setTempSettings(prev => ({ ...prev, promptTemplates: newTemplates }));
-                                    await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates: newTemplates });
-                                  }}
-                                  placeholder="输入人物设定内容..."
-                                  className={cn(
-                                    "w-full bg-transparent border-none outline-none text-xs min-h-[60px] resize-none",
-                                    theme === 'dark' ? "text-gray-400" : "text-[#4B5563]"
-                                  )}
-                                />
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {activeSettingsTab === 'memory' && (
+                    {activeSettingsTab === 'templates' && (
                       <div className="space-y-8">
-                        <section className="space-y-4">
+                        {/* AI Setting Templates */}
+                        <section className="space-y-6">
                           <div className="flex items-center justify-between">
-                            <div className="flex flex-col gap-1">
-                              <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">层级记忆管理 (Tiered Memory)</label>
-                              <p className={cn("text-[10px]", theme === 'dark' ? "text-gray-500" : "text-[#9CA3AF]")}>
-                                开启后，系统将使用 SQLite 存储长期事实，并根据当前对话自动检索。
-                              </p>
-                            </div>
+                            <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">AI设定模板</label>
                             <button
-                              onClick={() => setTempSettings(prev => ({ ...prev, useTieredMemory: !prev.useTieredMemory }))}
+                              onClick={async () => {
+                                const newTemplate = { id: uuidv4(), name: '新AI设定', content: '' };
+                                const newTemplates = [newTemplate, ...promptTemplates];
+                                setPromptTemplates(newTemplates);
+                                setTempSettings(prev => ({ ...prev, promptTemplates: newTemplates }));
+                                await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates: newTemplates, storyTemplates });
+                              }}
                               className={cn(
-                                "w-12 h-6 rounded-full relative transition-colors",
-                                tempSettings.useTieredMemory ? "bg-emerald-500" : "bg-gray-300"
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors",
+                                theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]"
                               )}
                             >
-                              <div className={cn(
-                                "absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all",
-                                tempSettings.useTieredMemory ? "left-7" : "left-1"
-                              )} />
+                              <Plus size={14} />
+                              新建模板
                             </button>
+                          </div>
+
+                          <div className="space-y-4">
+                            {promptTemplates.length === 0 ? (
+                              <div className={cn(
+                                "p-8 text-center rounded-2xl border-2 border-dashed",
+                                theme === 'dark' ? "border-white/5 text-gray-500" : "border-[#F3F4F6] text-[#9CA3AF]"
+                              )}>
+                                <User size={32} className="mx-auto mb-2 opacity-20" />
+                                <p className="text-xs font-medium">暂无AI设定模板，点击上方按钮新建</p>
+                              </div>
+                            ) : (
+                              promptTemplates.map(template => (
+                                <div
+                                  key={template.id}
+                                  className={cn(
+                                    "p-4 rounded-2xl border transition-all space-y-3",
+                                    theme === 'dark' ? "bg-white/5 border-white/10" : "bg-white border-[#E5E7EB]"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      value={template.name}
+                                      onChange={async (e) => {
+                                        const newTemplates = promptTemplates.map(t => t.id === template.id ? { ...t, name: e.target.value } : t);
+                                        setPromptTemplates(newTemplates);
+                                        setTempSettings(prev => ({ ...prev, promptTemplates: newTemplates }));
+                                        await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates: newTemplates, storyTemplates });
+                                      }}
+                                      placeholder="模板名称"
+                                      className={cn(
+                                        "flex-1 bg-transparent border-none outline-none text-sm font-bold",
+                                        theme === 'dark' ? "text-white" : "text-[#1A1A1A]"
+                                      )}
+                                    />
+                                    <button
+                                      onClick={async () => {
+                                        const newTemplates = promptTemplates.filter(t => t.id !== template.id);
+                                        setPromptTemplates(newTemplates);
+                                        setTempSettings(prev => ({ ...prev, promptTemplates: newTemplates }));
+                                        await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates: newTemplates, storyTemplates });
+                                      }}
+                                      className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                  <textarea
+                                    value={template.content}
+                                    onChange={async (e) => {
+                                      const newTemplates = promptTemplates.map(t => t.id === template.id ? { ...t, content: e.target.value } : t);
+                                      setPromptTemplates(newTemplates);
+                                      setTempSettings(prev => ({ ...prev, promptTemplates: newTemplates }));
+                                      await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates: newTemplates, storyTemplates });
+                                    }}
+                                    placeholder="输入AI底层设定内容 (直接作为System Prompt)..."
+                                    className={cn(
+                                      "w-full bg-transparent border-none outline-none text-xs min-h-[60px] resize-none",
+                                      theme === 'dark' ? "text-gray-400" : "text-[#4B5563]"
+                                    )}
+                                  />
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </section>
+
+                        {/* Story World Templates */}
+                        <section className="space-y-6 pt-6 border-t border-dashed border-gray-200 dark:border-white/10">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">故事世界模板</label>
+                            <button
+                              onClick={async () => {
+                                const newTemplate = { id: uuidv4(), name: '新故事世界', content: '' };
+                                const newTemplates = [newTemplate, ...storyTemplates];
+                                setStoryTemplates(newTemplates);
+                                setTempSettings(prev => ({ ...prev, storyTemplates: newTemplates }));
+                                await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates, storyTemplates: newTemplates });
+                              }}
+                              className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors",
+                                theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]"
+                              )}
+                            >
+                              <Plus size={14} />
+                              新建模板
+                            </button>
+                          </div>
+
+                          <div className="space-y-4">
+                            {storyTemplates.length === 0 ? (
+                              <div className={cn(
+                                "p-8 text-center rounded-2xl border-2 border-dashed",
+                                theme === 'dark' ? "border-white/5 text-gray-500" : "border-[#F3F4F6] text-[#9CA3AF]"
+                              )}>
+                                <BookOpen size={32} className="mx-auto mb-2 opacity-20" />
+                                <p className="text-xs font-medium">暂无故事世界模板，点击上方按钮新建</p>
+                              </div>
+                            ) : (
+                              storyTemplates.map(template => (
+                                <div
+                                  key={template.id}
+                                  className={cn(
+                                    "p-4 rounded-2xl border transition-all space-y-3",
+                                    theme === 'dark' ? "bg-white/5 border-white/10" : "bg-white border-[#E5E7EB]"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      value={template.name}
+                                      onChange={async (e) => {
+                                        const newTemplates = storyTemplates.map(t => t.id === template.id ? { ...t, name: e.target.value } : t);
+                                        setStoryTemplates(newTemplates);
+                                        setTempSettings(prev => ({ ...prev, storyTemplates: newTemplates }));
+                                        await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates, storyTemplates: newTemplates });
+                                      }}
+                                      placeholder="模板名称"
+                                      className={cn(
+                                        "flex-1 bg-transparent border-none outline-none text-sm font-bold",
+                                        theme === 'dark' ? "text-white" : "text-[#1A1A1A]"
+                                      )}
+                                    />
+                                    <button
+                                      onClick={async () => {
+                                        const newTemplates = storyTemplates.filter(t => t.id !== template.id);
+                                        setStoryTemplates(newTemplates);
+                                        setTempSettings(prev => ({ ...prev, storyTemplates: newTemplates }));
+                                        await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates, storyTemplates: newTemplates });
+                                      }}
+                                      className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                  <textarea
+                                    value={template.content}
+                                    onChange={async (e) => {
+                                      const newTemplates = storyTemplates.map(t => t.id === template.id ? { ...t, content: e.target.value } : t);
+                                      setStoryTemplates(newTemplates);
+                                      setTempSettings(prev => ({ ...prev, storyTemplates: newTemplates }));
+                                      await api.saveSettings({ apiKey, temperature, theme, bgImage, promptTemplates, storyTemplates: newTemplates });
+                                    }}
+                                    placeholder="输入故事设定内容 (仅在开始时发送一次)..."
+                                    className={cn(
+                                      "w-full bg-transparent border-none outline-none text-xs min-h-[60px] resize-none",
+                                      theme === 'dark' ? "text-gray-400" : "text-[#4B5563]"
+                                    )}
+                                  />
+                                </div>
+                              ))
+                            )}
                           </div>
                         </section>
                       </div>
                     )}
+
+
 
                     {activeSettingsTab === 'help' && (
                       <div className="space-y-8">
@@ -2119,99 +2225,43 @@ export default function App() {
 
         {/* Memory Modal Removed */}
 
-        {/* Diagonal Wave Transition Overlay */}
+        {/* Story Mode Transition Overlay */}
         <AnimatePresence>
-          {isTransitioning && (
-            <motion.div
-              className="fixed inset-0 z-[100] pointer-events-none bg-[#0a0a0a]"
-              initial={{ clipPath: 'circle(0% at 100% 100%)' }}
-              animate={{ clipPath: 'circle(150% at 100% 100%)' }}
-              transition={{ duration: 1.5, ease: "easeInOut" }}
-              onAnimationComplete={() => {
-                setIsTransitioning(false);
-                setIsStoryMode(true);
-                setTheme('dark');
-                setIsStorySetupOpen(true);
-              }}
-            />
+          {(isTransitioning || isExitingStoryMode) && (
+            <motion.div 
+              className="fixed inset-0 z-[100] pointer-events-none overflow-hidden flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <motion.div
+                style={{ width: '150vmax', height: '150vmax' }}
+                className="absolute rounded-full bg-gradient-to-tr from-purple-600 via-indigo-500 to-cyan-400 opacity-100 blur-3xl"
+                initial={isTransitioning ? { scale: 0 } : { scale: 1 }}
+                animate={isTransitioning ? { scale: 1 } : { scale: 0 }}
+                transition={{ duration: 1.5, ease: "easeInOut" }}
+                onAnimationComplete={() => {
+                  if (isTransitioning) {
+                    setIsTransitioning(false);
+                    setIsStoryMode(true);
+                    if (theme !== 'dark') {
+                      setTheme('dark');
+                    }
+                    setIsEditingSystemPrompt(true);
+                  } else if (isExitingStoryMode) {
+                    setIsExitingStoryMode(false);
+                    setIsStoryMode(false);
+                    setIsEditingSystemPrompt(false);
+                    setTheme(previousTheme);
+                  }
+                }}
+              />
+            </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Story Setup Modal */}
-        <AnimatePresence>
-          {isStorySetupOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="w-full max-w-2xl bg-[#1a1a1a] rounded-3xl shadow-2xl overflow-hidden border border-white/10 flex flex-col max-h-[90vh]"
-              >
-                <div className="p-6 border-b border-white/10 flex justify-between items-center shrink-0">
-                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                    🌌 沉浸式故事模式
-                  </h2>
-                  <button 
-                    onClick={() => {
-                      setIsStorySetupOpen(false);
-                      setIsStoryMode(false);
-                    }}
-                    className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-                
-                <div className="p-6 overflow-y-auto flex-1 space-y-6">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-300 mb-2">世界观与角色设定 (System Prompt)</label>
-                    <textarea
-                      value={storySystemPrompt}
-                      onChange={e => setStorySystemPrompt(e.target.value)}
-                      placeholder="例如：你是一个赛博朋克世界的黑客，正在引导我潜入一家巨型企业的服务器..."
-                      className="w-full h-40 bg-white/5 border border-white/10 rounded-xl p-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
-                    />
-                  </div>
-                  
-                  {promptTemplates.length > 0 && (
-                    <div>
-                      <label className="block text-sm font-bold text-gray-300 mb-2">从历史模板选择</label>
-                      <div className="flex flex-wrap gap-2">
-                        {promptTemplates.map(template => (
-                          <button
-                            key={template.id}
-                            onClick={() => setStorySystemPrompt(template.content)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
-                          >
-                            {template.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
 
-                <div className="p-6 border-t border-white/10 flex justify-end gap-3 shrink-0">
-                  <button 
-                    onClick={() => {
-                      setIsStorySetupOpen(false);
-                      setIsStoryMode(false);
-                    }}
-                    className="px-6 py-2.5 rounded-xl text-sm font-bold bg-white/5 text-white hover:bg-white/10 transition-colors"
-                  >
-                    取消
-                  </button>
-                  <button 
-                    onClick={handleStartStory}
-                    className="px-8 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 transition-all shadow-lg"
-                  >
-                    开始故事
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
 
         {/* Prompt Confirmation Dialog */}
         <AnimatePresence>

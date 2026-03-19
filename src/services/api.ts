@@ -20,6 +20,35 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
   return res;
 };
 
+const parseResponse = async (res: Response, defaultErrorMsg = '请求失败') => {
+  if (!res.ok) {
+    let errMsg = defaultErrorMsg;
+    try {
+      const text = await res.text();
+      try {
+        const err = JSON.parse(text);
+        errMsg = err.error || errMsg;
+      } catch (e) {
+        if (res.status === 413) {
+          errMsg = '请求数据过大，超出了服务器限制 (Payload Too Large)。请清理历史记录或重启应用。';
+        } else {
+          errMsg = `服务器错误 (${res.status}): ${text.substring(0, 100)}`;
+        }
+      }
+    } catch (e) {
+      errMsg = `网络请求失败 (${res.status})`;
+    }
+    throw new Error(errMsg);
+  }
+  
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (e) {
+    throw new Error('服务器返回了无效的数据格式');
+  }
+};
+
 export const api = {
   async verifyKey(key: string) {
     const res = await fetch("/api/verify-key", {
@@ -27,23 +56,23 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key }),
     });
-    return res.json();
+    return parseResponse(res, '验证失败');
   },
 
   async getMemories(conversationName?: string): Promise<any[]> {
     const url = conversationName ? `/api/memories?conversationName=${encodeURIComponent(conversationName)}` : "/api/memories";
     const res = await fetchWithAuth(url);
-    return res.json();
+    return parseResponse(res, '获取记忆失败');
   },
 
   async getConversations(): Promise<Conversation[]> {
     const res = await fetchWithAuth("/api/conversations");
-    return res.json();
+    return parseResponse(res, '获取对话列表失败');
   },
 
   async getMessages(conversationId: string): Promise<Message[]> {
     const res = await fetchWithAuth(`/api/conversations/${conversationId}/messages`);
-    return res.json();
+    return parseResponse(res, '获取消息失败');
   },
 
   async createConversation(conv: Partial<Conversation>) {
@@ -52,7 +81,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(conv),
     });
-    return res.json();
+    return parseResponse(res, '创建对话失败');
   },
 
   async updateConversation(id: string, updates: Partial<Conversation>) {
@@ -61,18 +90,14 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
     });
-    return res.json();
+    return parseResponse(res, '更新对话失败');
   },
 
   async deleteConversation(id: string) {
     const res = await fetchWithAuth(`/api/conversations/${id}`, {
       method: "DELETE",
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || '删除失败');
-    }
-    return res.json();
+    return parseResponse(res, '删除对话失败');
   },
 
   async saveMessage(message: Partial<Message>) {
@@ -81,30 +106,26 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(message),
     });
-    return res.json();
+    return parseResponse(res, '保存消息失败');
   },
 
   async deleteMessage(id: string) {
     const res = await fetchWithAuth(`/api/messages/${id}`, {
       method: "DELETE",
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || '删除失败');
-    }
-    return res.json();
+    return parseResponse(res, '删除消息失败');
   },
 
   async getBalance(apiKey?: string) {
     const res = await fetchWithAuth("/api/balance", {
       headers: apiKey ? { "X-DeepSeek-API-Key": apiKey } : {},
     });
-    return res.json();
+    return parseResponse(res, '获取余额失败');
   },
 
   async getSettings() {
     const res = await fetchWithAuth("/api/settings");
-    return res.json();
+    return parseResponse(res, '获取设置失败');
   },
 
   async saveSettings(settings: any) {
@@ -113,7 +134,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),
     });
-    return res.json();
+    return parseResponse(res, '保存设置失败');
   },
 
   async extractPrompt(text: string, apiKey?: string) {
@@ -122,11 +143,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, apiKey }),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || '提取提示词失败');
-    }
-    return res.json();
+    return parseResponse(res, '提取提示词失败');
   },
 
   async generateImage(prompt: string, provider: string, apiKey?: string) {
@@ -135,11 +152,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, provider, apiKey }),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || '生成图片失败');
-    }
-    return res.json();
+    return parseResponse(res, '生成图片失败');
   },
 
   async chat(params: {

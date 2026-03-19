@@ -53,4 +53,6 @@ export interface Conversation {
   updated_at: string;
   is_story_mode?: boolean;
   story_system_prompt?: string;
+  desired_plot?: string;
+  desired_characters?: string;
 }
