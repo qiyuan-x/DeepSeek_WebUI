@@ -1,148 +1,81 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import db from "./db";
-
-let aiClient: GoogleGenAI | null = null;
-
-function getAiClient(): GoogleGenAI {
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-  }
-  return aiClient;
-}
+import { ILLMProvider } from "./providers/llm/ILLMProvider.js";
+import { powerMem } from "./powermem.js";
 
 export class MemoryService {
-  static async retrieve(query: string, apiKey: string, conversationName?: string): Promise<string> {
+  static async retrieve(query: string, llmProvider: ILLMProvider, apiKey: string, model: string, conversationId: string): Promise<{ context: string, usage: any }> {
     try {
-      if (!apiKey) {
-        console.log("No API key provided for memory retrieval.");
-        return "";
-      }
-
-      // 1. Get keys from SQLite, ordered by weight and last_accessed to prioritize important/recent memories
-      // Filter by conversationName if provided to make memory conversation-specific
-      let stmt;
-      let rows;
-      if (conversationName) {
-        stmt = db.prepare("SELECT entity_key FROM entity_memories WHERE entity_key LIKE ? ORDER BY weight DESC, last_accessed DESC LIMIT 100");
-        rows = stmt.all(`[${conversationName}]%`) as { entity_key: string }[];
-      } else {
-        stmt = db.prepare("SELECT entity_key FROM entity_memories ORDER BY weight DESC, last_accessed DESC LIMIT 100");
-        rows = stmt.all() as { entity_key: string }[];
-      }
-      const keys = rows.map(r => r.entity_key);
-
-      if (keys.length === 0) return "";
-
-      // 2. Use DeepSeek to find relevant keys
-      const response = await fetch("https://api.deepseek.com/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: "deepseek-chat",
-          messages: [
-            {
-              role: "system",
-              content: "你是一个助手，负责根据用户查询从列表中识别相关的实体。请仅以逗号分隔的列表形式返回相关的键（keys）。如果没有相关的实体，请返回'NONE'。"
-            },
-            {
-              role: "user",
-              content: `User query: "${query}"\nList of known entities/facts:\n${keys.join(", ")}`
-            }
-          ]
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`DeepSeek API error: ${response.status} ${errText}`);
-      }
-
-      const data = await response.json();
-      const relevantKeysStr = data.choices?.[0]?.message?.content || "NONE";
+      if (!apiKey || !conversationId) return { context: "", usage: null };
       
-      if (relevantKeysStr.includes("NONE")) return "";
+      await powerMem.init();
+      if (!powerMem.isReady()) return { context: "", usage: null };
 
-      const relevantKeys = relevantKeysStr.split(",").map(k => k.trim());
-
-      // 3. Fetch values from SQLite and update last_accessed
-      const facts: string[] = [];
-      for (const key of relevantKeys) {
-        const row = db.prepare("SELECT entity_value FROM entity_memories WHERE entity_key = ?").get(key) as { entity_value: string } | undefined;
-        if (row) {
-          facts.push(`${key}: ${row.entity_value}`);
-          db.prepare("UPDATE entity_memories SET last_accessed = CURRENT_TIMESTAMP, weight = weight + 1 WHERE entity_key = ?").run(key);
-        }
+      // 1. Search for relevant facts
+      const searchResults = await powerMem.search(query, conversationId, 5);
+      
+      let factsStr = "";
+      if (searchResults.length > 0) {
+        factsStr = searchResults.map((r: any) => r.content).join('\n');
       }
 
-      return facts.join("\n");
+      // 2. Fetch Profile and Summary for this conversation
+      const profileAndSummary = await powerMem.getProfileAndSummary(conversationId);
+      const profileData = profileAndSummary.filter((e: any) => e.metadata?.type === 'profile');
+      const summaryData = profileAndSummary.filter((e: any) => e.metadata?.type === 'summary');
+
+      // 3. Combine everything into a single context string
+      let memoryContext = factsStr ? `[相关记忆事实]\n${factsStr}` : "";
+      if (profileData.length > 0) {
+        memoryContext += `\n\n[用户画像]\n${profileData.map((p: any) => p.content).join("\n")}`;
+      }
+      if (summaryData.length > 0) {
+        memoryContext += `\n\n[历史对话总结]\n${summaryData.map((p: any) => p.content).join("\n")}`;
+      }
+
+      return { context: memoryContext.trim(), usage: null };
     } catch (error) {
-      console.error("Memory Retrieval Error:", error);
-      return "";
+      console.error("Memory retrieval error:", error);
+      return { context: "", usage: null };
     }
   }
 
-  static async ingest(userInput: string, aiResponse: string, apiKey: string, conversationId?: string, conversationName?: string, round?: number): Promise<void> {
+  static async ingest(userInput: string, aiResponse: string, llmProvider: ILLMProvider, apiKey: string, model: string, conversationId: string, conversationName: string, round: number): Promise<any> {
     try {
-      if (!apiKey) {
-        console.log("No API key provided for memory ingestion.");
-        return;
-      }
+      if (!apiKey || !conversationId) return null;
 
-      const prefix = conversationName ? `[${conversationName}] ` : "";
-      const idPrefix = conversationId ? `[${conversationId}] ` : ""; // Use ID for stable querying if needed, but user requested name. Let's use name as prefix in the key.
+      await powerMem.init();
+      if (!powerMem.isReady()) return null;
 
-      // Fetch existing user profile and summary for this conversation to help LLM merge/update
-      const stmt = db.prepare("SELECT entity_key, entity_value FROM entity_memories WHERE entity_key LIKE ? OR entity_key LIKE ?");
-      const existingData = stmt.all(`${prefix}用户画像`, `${prefix}对话总结-%`) as { entity_key: string, entity_value: string }[];
+      // Fetch existing profile and summary to help LLM merge/update
+      const existingData = await powerMem.getProfileAndSummary(conversationId);
       
       const existingProfileStr = existingData.length > 0 
-        ? "当前该对话已有的记忆信息如下（如果已有信息发生变化或需要补充，请使用相同的key并提供更新/合并后的完整value；如果是全新的信息类别，请使用新的key）：\n" + existingData.map(p => `${p.entity_key}: ${p.entity_value}`).join("\n")
+        ? "当前该对话已有的记忆信息如下（如果已有信息发生变化或需要补充，请提供更新/合并后的完整内容）：\n" + existingData.map((p: any) => `[${p.metadata?.type}] ${p.content}`).join("\n")
         : "当前该对话没有已知的记忆信息。";
 
-      const isSummaryRound = round && round > 0 && round % 5 === 0;
+      const isSummaryRound = round > 0 && round % 5 === 0;
       const summaryInstruction = isSummaryRound 
-        ? `本次对话已达到第 ${round} 轮，请生成一个名为 '${prefix}对话总结-${round - 4}-${round}轮对话' 的key，其value为这5轮对话的详细总结。` 
+        ? `本次对话已达到第 ${round} 轮，请生成一段这5轮对话的详细总结，并标记为 'summary'。` 
         : `本次对话暂不需要生成新的对话总结（每5轮生成一次）。`;
 
-      const response = await fetch("https://api.deepseek.com/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: "deepseek-chat",
-          messages: [
-            {
-              role: "system",
-              content: `分析以下对话并提取重要的事实、用户偏好或专业背景（作为用户画像），以及本次对话的详细总结。请返回一个JSON对象，包含一个名为'memories'的数组，数组中的每个元素是一个包含'key'和'value'属性的对象。**请务必使用与用户输入相同的语言进行输出**。
+      const jsonStrResponse = await llmProvider.chat([
+        {
+          role: "system",
+          content: `分析以下对话并提取重要的事实、用户偏好或专业背景（作为用户画像），以及本次对话的详细总结。请返回一个JSON对象，包含一个名为'memories'的数组，数组中的每个元素是一个包含'type' (必须是 'profile', 'summary', 或 'fact') 和 'content' 属性的对象。**请务必使用与用户输入相同的语言进行输出**。
 
 规则如下：
-1. **用户画像**：请更新或生成一个唯一的key '${prefix}用户画像'，其value为一段文字，描述AI对当前对话中用户的整体理解（包括偏好、背景等）。如果这是第一次对话，请务必生成此项。不要生成多个用户画像的key，只保留这一个。
-2. **对话总结**：${summaryInstruction}
-3. **其他记忆**：提取对话中发生的重要事实、事件或具体细节，使用描述性的key（例如 '${prefix}其他记忆-项目名称' 或 '${prefix}其他记忆-已解决的问题'），其value为具体的事实内容。
+1. **用户画像 (profile)**：请更新或生成一段文字，描述AI对当前对话中用户的整体理解（包括偏好、背景等）。如果这是第一次对话，请务必生成此项。
+2. **对话总结 (summary)**：${summaryInstruction}
+3. **其他记忆 (fact)**：提取对话中发生的重要事实、事件或具体细节。
 
-如果没有发现新事实且总结无需更新，请依然返回'用户画像'，其他可为空。\n\n${existingProfileStr}`
-            },
-            {
-              role: "user",
-              content: `User: ${userInput}\nAI: ${aiResponse}`
-            }
-          ],
-          response_format: { type: "json_object" }
-        })
-      });
+如果没有发现新事实且总结无需更新，请依然返回'profile'，其他可为空。\n\n${existingProfileStr}`
+        },
+        {
+          role: "user",
+          content: `User: ${userInput}\nAI: ${aiResponse}`
+        }
+      ], { model, response_format: { type: "json_object" } }, apiKey);
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`DeepSeek API error: ${response.status} ${errText}`);
-      }
-
-      const data = await response.json();
-      let jsonStr = data.choices?.[0]?.message?.content || "[]";
+      let jsonStr = jsonStrResponse || "[]";
       
       // Clean up markdown formatting if present
       const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -151,15 +84,13 @@ export class MemoryService {
       } else {
         jsonStr = jsonStr.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '').trim();
       }
-      
-      // DeepSeek json_object might return an object with a key containing the array
+
       let facts = [];
       try {
         const parsed = JSON.parse(jsonStr);
         if (Array.isArray(parsed)) {
           facts = parsed;
         } else if (parsed && typeof parsed === 'object') {
-          // Look for an array value
           for (const key in parsed) {
             if (Array.isArray(parsed[key])) {
               facts = parsed[key];
@@ -171,38 +102,28 @@ export class MemoryService {
         console.error("Failed to parse facts JSON:", e);
       }
 
-      console.log("Extracted facts:", facts);
-
-      // Insert or update in SQLite
-      const upsert = db.prepare(`
-        INSERT INTO entity_memories (entity_key, entity_value, last_accessed, weight)
-        VALUES (?, ?, CURRENT_TIMESTAMP, 1)
-        ON CONFLICT(entity_key) DO UPDATE SET
-          entity_value = excluded.entity_value,
-          last_accessed = CURRENT_TIMESTAMP,
-          weight = weight + 1
-      `);
-
       for (const fact of facts) {
-        upsert.run(fact.key, fact.value);
+        if (fact.type && fact.content) {
+          // If it's profile or summary, we might want to update existing or add new
+          if (fact.type === 'profile') {
+            const existingProfile = existingData.find((e: any) => e.metadata?.type === 'profile');
+            if (existingProfile) {
+              await powerMem.updateMemory(existingProfile.id, fact.content);
+            } else {
+              await powerMem.addMemory(fact.content, conversationId, 'profile');
+            }
+          } else if (fact.type === 'summary') {
+            await powerMem.addMemory(fact.content, conversationId, 'summary');
+          } else {
+            await powerMem.addMemory(fact.content, conversationId, 'fact');
+          }
+        }
       }
 
-      // Cleanup mechanism: keep only top 1000 memories by weight and recency
-      // (Simplified: just delete oldest if count > 1000)
-      const countRow = db.prepare("SELECT COUNT(*) as count FROM entity_memories").get() as { count: number };
-      if (countRow.count > 1000) {
-        db.prepare(`
-          DELETE FROM entity_memories 
-          WHERE entity_key IN (
-            SELECT entity_key FROM entity_memories 
-            ORDER BY weight ASC, last_accessed ASC 
-            LIMIT ?
-          )
-        `).run(countRow.count - 1000);
-      }
-
+      return null;
     } catch (error) {
-      console.error("Memory Ingestion Error:", error);
+      console.error("Memory ingestion error:", error);
+      return null;
     }
   }
 }

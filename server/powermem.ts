@@ -1,103 +1,93 @@
-import mysql from 'mysql2/promise';
+import { Memory } from 'powermem';
 import fs from 'fs';
 import path from 'path';
 
 export class PowerMem {
-  private pool: mysql.Pool | null = null;
-  private configPath: string;
+  private memory: Memory | null = null;
+  private isInitialized = false;
 
-  constructor(configPath: string) {
-    this.configPath = configPath;
-    this.initPool();
-  }
-
-  private initPool() {
-    if (fs.existsSync(this.configPath)) {
-      try {
-        const config = JSON.parse(fs.readFileSync(this.configPath, 'utf-8'));
-        if (config.host && config.user) {
-          this.pool = mysql.createPool({
-            host: config.host,
-            user: config.user,
-            password: config.password,
-            database: config.database,
-            port: config.port || 2881,
-            waitForConnections: true,
-            connectionLimit: 10,
-            queueLimit: 0
-          });
-          this.initTables();
-        }
-      } catch (e) {
-        console.error("Failed to init PowerMem pool:", e);
-      }
+  public async init() {
+    if (this.isInitialized) return;
+    
+    const envPath = path.resolve(process.cwd(), ".env");
+    if (!fs.existsSync(envPath)) {
+      console.log("[PowerMem] .env not found. Memory will be disabled.");
+      this.isInitialized = true;
+      return;
     }
-  }
 
-  private async initTables() {
-    if (!this.pool) return;
     try {
-      await this.pool.query(`
-        CREATE TABLE IF NOT EXISTS conversation_memory (
-          id VARCHAR(255) PRIMARY KEY,
-          memory TEXT,
-          user_profile TEXT,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
+      this.memory = await Memory.create();
+      console.log("[PowerMem] Connected and initialized successfully.");
     } catch (e) {
-      console.error("Failed to init PowerMem tables:", e);
+      console.error("[PowerMem] Failed to init:", e);
+    } finally {
+      this.isInitialized = true;
     }
   }
 
-  public async getMemory(convId: string) {
-    if (!this.pool) return null;
+  public isReady() {
+    return this.memory !== null;
+  }
+
+  public async search(query: string, conversationId: string, limit: number = 5) {
+    if (!this.memory) return [];
     try {
-      const [rows]: any = await this.pool.query(
-        'SELECT memory, user_profile FROM conversation_memory WHERE id = ?',
-        [convId]
-      );
-      if (rows.length > 0) {
-        return rows[0];
-      }
+      const results = await this.memory.search(query, { 
+        runId: conversationId,
+        limit
+      });
+      return results.results;
     } catch (e) {
-      console.error("PowerMem getMemory error:", e);
+      console.error("[PowerMem] search error:", e);
+      return [];
     }
-    return null;
   }
 
-  public async saveMemory(convId: string, memory: string, userProfile: string) {
-    if (!this.pool) return false;
+  public async getProfileAndSummary(conversationId: string) {
+    if (!this.memory) return [];
     try {
-      await this.pool.query(
-        `INSERT INTO conversation_memory (id, memory, user_profile) 
-         VALUES (?, ?, ?) 
-         ON DUPLICATE KEY UPDATE memory = ?, user_profile = ?`,
-        [convId, memory, userProfile, memory, userProfile]
-      );
-      return true;
+      const results = await this.memory.getAll({
+        runId: conversationId,
+        limit: 100
+      });
+      return results.memories.filter((r: any) => r.metadata?.type === 'profile' || r.metadata?.type === 'summary');
     } catch (e) {
-      console.error("PowerMem saveMemory error:", e);
-      return false;
+      console.error("[PowerMem] getProfileAndSummary error:", e);
+      return [];
     }
   }
 
-  public async deleteMemory(convId: string) {
-    if (!this.pool) return false;
+  public async addMemory(content: string, conversationId: string, type: string = 'fact') {
+    if (!this.memory) return;
     try {
-      await this.pool.query('DELETE FROM conversation_memory WHERE id = ?', [convId]);
-      return true;
+      await this.memory.add({
+        content,
+        runId: conversationId,
+        metadata: { type }
+      });
     } catch (e) {
-      console.error("PowerMem deleteMemory error:", e);
-      return false;
+      console.error("[PowerMem] addMemory error:", e);
     }
   }
 
-  public reloadConfig() {
-    if (this.pool) {
-      this.pool.end();
-      this.pool = null;
+  public async updateMemory(id: string, content: string) {
+    if (!this.memory) return;
+    try {
+      await this.memory.update(id, { content });
+    } catch (e) {
+      console.error("[PowerMem] updateMemory error:", e);
     }
-    this.initPool();
+  }
+
+  public async reloadConfig() {
+    if (this.memory) {
+      await this.memory.close();
+      this.memory = null;
+    }
+    this.isInitialized = false;
+    await this.init();
   }
 }
+
+export const powerMem = new PowerMem();

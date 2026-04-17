@@ -100,6 +100,13 @@ export const api = {
     return parseResponse(res, '删除对话失败');
   },
 
+  async clearDiscussion(id: string) {
+    const res = await fetchWithAuth(`/api/conversations/${id}/discussion`, {
+      method: "DELETE",
+    });
+    return parseResponse(res, '清空讨论记录失败');
+  },
+
   async saveMessage(message: Partial<Message>) {
     const res = await fetchWithAuth("/api/messages", {
       method: "POST",
@@ -121,6 +128,15 @@ export const api = {
       headers: apiKey ? { "X-DeepSeek-API-Key": apiKey } : {},
     });
     return parseResponse(res, '获取余额失败');
+  },
+
+  async testConnection(provider: string, apiKey: string, model: string, baseUrl?: string) {
+    const res = await fetchWithAuth("/api/test-connection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, apiKey, model, baseUrl }),
+    });
+    return parseResponse(res, '测试连接失败');
   },
 
   async getSettings() {
@@ -161,8 +177,10 @@ export const api = {
     temperature: number;
     stream: boolean;
     apiKey?: string;
+    provider?: string;
     stream_options?: any;
     useTieredMemory?: boolean;
+    skipMemoryIngest?: boolean;
     conversationId?: string;
     conversationName?: string;
   }, signal?: AbortSignal) {
