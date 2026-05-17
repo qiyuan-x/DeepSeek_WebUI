@@ -7,11 +7,15 @@ interface ChatState {
   currentConvId: string | null;
   messages: Message[];
   isGenerating: boolean;
+  isIngestingMemory: boolean;
+  drafts: Record<string, string>;
   
   setConversations: (convs: Conversation[] | ((prev: Conversation[]) => Conversation[])) => void;
   setCurrentConvId: (id: string | null) => void;
   setMessages: (msgs: Message[] | ((prev: Message[]) => Message[])) => void;
   setIsGenerating: (isGenerating: boolean) => void;
+  setIsIngestingMemory: (isIngesting: boolean) => void;
+  setDraft: (convId: string | null, draft: string) => void;
   
   loadConversations: () => Promise<void>;
   loadMessages: (convId: string) => Promise<void>;
@@ -22,6 +26,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentConvId: null,
   messages: [],
   isGenerating: false,
+  isIngestingMemory: false,
+  drafts: {},
 
   setConversations: (convs) => set((state) => ({ 
     conversations: typeof convs === 'function' ? convs(state.conversations) : convs 
@@ -31,6 +37,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     messages: typeof msgs === 'function' ? msgs(state.messages) : msgs 
   })),
   setIsGenerating: (isGenerating) => set({ isGenerating }),
+  setIsIngestingMemory: (isIngestingMemory) => set({ isIngestingMemory }),
+  setDraft: (convId, draft) => set((state) => ({ 
+    drafts: { ...state.drafts, [convId || 'new']: draft } 
+  })),
 
   loadConversations: async () => {
     try {

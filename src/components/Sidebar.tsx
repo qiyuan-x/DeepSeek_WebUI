@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, MessageSquare, BookOpen, Edit2, Trash2, Settings } from 'lucide-react';
+import { Plus, MessageSquare, BookOpen, Edit2, Trash2, Settings, Check } from 'lucide-react';
 import { cn } from '../types';
 import { api } from '../services/api';
 import { useChatStore } from '../store/chatStore';
@@ -14,10 +14,11 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ handleNewChat }) => {
   const { conversations, currentConvId, setCurrentConvId, loadConversations } = useChatStore();
   const { isSidebarOpen, setSidebarOpen, setSettingsOpen } = useUIStore();
-  const { theme } = useSettingStore();
+  const { theme } = useSettingStore(s => s.uiConfig);
 
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [longPressConvId, setLongPressConvId] = useState<string | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -44,42 +45,57 @@ export const Sidebar: React.FC<SidebarProps> = ({ handleNewChat }) => {
   };
 
   const handleDeleteConv = async (id: string) => {
-    if (confirm('确定要删除这个对话吗？')) {
+    if (deletingId === id) {
       await api.deleteConversation(id);
+      setDeletingId(null);
       if (currentConvId === id) {
         handleNewChat();
       }
       loadConversations();
+    } else {
+      setDeletingId(id);
+      // Auto-cancel delete confirmation after 3 seconds
+      setTimeout(() => setDeletingId(null), 3000);
     }
   };
 
   return (
     <AnimatePresence mode="wait">
       {isSidebarOpen && (
-        <motion.aside
-          initial={{ width: 0, opacity: 0 }}
-          animate={{ width: 280, opacity: 1 }}
-          exit={{ width: 0, opacity: 0 }}
-          className={cn(
-            "flex flex-col z-20 border-r transition-colors duration-300",
-            theme === 'dark' ? "bg-[#111111] border-white/10" : "bg-white border-[#E5E7EB]"
-          )}
-        >
-          <div className={cn(
-            "p-4 flex items-center justify-between border-b",
-            theme === 'dark' ? "border-white/10" : "border-[#F3F4F6]"
-          )}>
-            <button 
-              onClick={handleNewChat}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors w-full justify-center text-sm font-medium",
-                theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]"
-              )}
-            >
-              <Plus size={16} />
-              新建对话
-            </button>
-          </div>
+        <>
+          {/* Mobile Overlay */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-30 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <motion.aside
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 280, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            className={cn(
+              "flex flex-col z-40 border-r transition-colors duration-300 fixed md:relative h-[100dvh] shrink-0 top-0 left-0 shadow-2xl md:shadow-none overflow-hidden",
+              theme === 'dark' ? "bg-[#111111] border-white/10" : "bg-white border-[#E5E7EB]"
+            )}
+          >
+            <div className="flex flex-col w-[280px] h-full shrink-0">
+              <div className={cn(
+              "p-4 flex items-center justify-between border-b shrink-0",
+              theme === 'dark' ? "border-white/10" : "border-[#F3F4F6]"
+            )}>
+              <button 
+                onClick={handleNewChat}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors w-full justify-center text-sm font-medium",
+                  theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]"
+                )}
+              >
+                <Plus size={16} />
+                新建对话
+              </button>
+            </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {conversations.length === 0 ? (
@@ -158,11 +174,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ handleNewChat }) => {
                       }}
                       className={cn(
                         "p-1.5 rounded-md transition-colors",
-                        theme === 'dark' ? "hover:bg-red-500/20 text-gray-300 hover:text-red-500" : "hover:bg-red-50 text-[#4B5563] hover:text-red-500"
+                        deletingId === conv.id
+                          ? (theme === 'dark' ? "bg-red-500 text-white" : "bg-red-500 text-white")
+                          : (theme === 'dark' ? "hover:bg-red-500/20 text-gray-300 hover:text-red-500" : "hover:bg-red-50 text-[#4B5563] hover:text-red-500")
                       )}
-                      title="直接删除"
+                      title={deletingId === conv.id ? "再次点击确认删除" : "直接删除"}
                     >
-                      <Trash2 size={14} />
+                      {deletingId === conv.id ? <Check size={14} /> : <Trash2 size={14} />}
                     </button>
                   </div>
                 </div>
@@ -171,7 +189,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ handleNewChat }) => {
           </div>
 
           <div className={cn(
-            "p-4 border-t",
+            "p-4 border-t shrink-0",
             theme === 'dark' ? "border-white/10" : "border-[#F3F4F6]"
           )}>
             <button 
@@ -188,7 +206,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ handleNewChat }) => {
               设置
             </button>
           </div>
+            </div>
         </motion.aside>
+        </>
       )}
     </AnimatePresence>
   );

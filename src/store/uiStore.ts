@@ -7,6 +7,7 @@ interface UIState {
   isStorySetupOpen: boolean;
   isStoryDiscussionOpen: boolean;
   isPromptDialogOpen: boolean;
+  isImageGalleryOpen: boolean;
   activeSettingsTab: 'api' | 'theme' | 'templates' | 'memory' | 'advanced' | 'help';
   memoryTab: 'profile' | 'summary' | 'other';
   
@@ -16,6 +17,7 @@ interface UIState {
   setStorySetupOpen: (isOpen: boolean) => void;
   setStoryDiscussionOpen: (isOpen: boolean) => void;
   setPromptDialogOpen: (isOpen: boolean) => void;
+  setImageGalleryOpen: (isOpen: boolean) => void;
   setActiveSettingsTab: (tab: 'api' | 'theme' | 'templates' | 'advanced' | 'help') => void;
   setMemoryTab: (tab: 'profile' | 'summary' | 'other') => void;
 }
@@ -27,6 +29,7 @@ export const useUIStore = create<UIState>((set) => ({
   isStorySetupOpen: false,
   isStoryDiscussionOpen: false,
   isPromptDialogOpen: false,
+  isImageGalleryOpen: false,
   activeSettingsTab: 'api',
   memoryTab: 'profile',
 
@@ -38,6 +41,7 @@ export const useUIStore = create<UIState>((set) => ({
   setStorySetupOpen: (isOpen) => set({ isStorySetupOpen: isOpen }),
   setStoryDiscussionOpen: (isOpen) => set({ isStoryDiscussionOpen: isOpen }),
   setPromptDialogOpen: (isOpen) => set({ isPromptDialogOpen: isOpen }),
+  setImageGalleryOpen: (isOpen) => set({ isImageGalleryOpen: isOpen }),
   setActiveSettingsTab: (tab) => set({ activeSettingsTab: tab }),
   setMemoryTab: (tab) => set({ memoryTab: tab }),
 }));

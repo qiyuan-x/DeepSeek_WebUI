@@ -1,93 +1,127 @@
-import { Memory } from 'powermem';
-import fs from 'fs';
-import path from 'path';
+import { Memory } from "powermem";
+import path from "path";
+import { DATA_DIR, SETTINGS_FILE } from "./config.js";
+import fs from "fs";
 
-export class PowerMem {
-  private memory: Memory | null = null;
-  private isInitialized = false;
+let memoryInstance: any = null;
+let isInitializing = false;
 
-  public async init() {
-    if (this.isInitialized) return;
+export const powerMem = {
+  isReady: () => memoryInstance !== null,
+  
+  init: async (force = false) => {
+    if (memoryInstance && !force) return memoryInstance;
+    if (isInitializing) return memoryInstance;
     
-    const envPath = path.resolve(process.cwd(), ".env");
-    if (!fs.existsSync(envPath)) {
-      console.log("[PowerMem] .env not found. Memory will be disabled.");
-      this.isInitialized = true;
-      return;
-    }
-
+    isInitializing = true;
     try {
-      this.memory = await Memory.create();
-      console.log("[PowerMem] Connected and initialized successfully.");
-    } catch (e) {
-      console.error("[PowerMem] Failed to init:", e);
+      if (memoryInstance) {
+        memoryInstance.close?.();
+      }
+      
+      const dbPath = path.join(DATA_DIR, "powermem.sqlite");
+      
+      const configPath = SETTINGS_FILE;
+      let powermemConfig: any = { embeddingProvider: 'openai', embeddingModel: 'text-embedding-3-small' };
+      if (fs.existsSync(configPath)) {
+        try {
+          const settings = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          if (settings.powermemConfig) {
+             powermemConfig = settings.powermemConfig;
+          }
+        } catch(e) {}
+      }
+
+      let actualProvider = powermemConfig.embeddingProvider || 'openai';
+      let actualConfig: any = {
+          model: powermemConfig.embeddingModel || 'text-embedding-3-small',
+          apiKey: powermemConfig.embeddingApiKey || process.env.OPENAI_API_KEY || ''
+      };
+
+      if (actualProvider === 'local') {
+          actualProvider = 'openai'; // powermem doesn't know 'local', disguise as openai
+          actualConfig.apiKey = 'dummy-key';
+          const port = process.env.NODE_ENV === 'production' ? 2233 : 3000;
+          actualConfig.baseURL = `http://127.0.0.1:${port}/api`;
+          // Sometimes openai client uses "baseUrl" or "baseURL". Try both just in case:
+          actualConfig.baseUrl = `http://127.0.0.1:${port}/api`;
+      } else if (actualProvider === 'dashscope') {
+          actualProvider = 'openai';
+          actualConfig.baseURL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+          actualConfig.baseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+      } else if (actualProvider === 'zhipuai') {
+          actualProvider = 'openai';
+          actualConfig.baseURL = 'https://open.bigmodel.cn/api/paas/v4';
+          actualConfig.baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
+      }
+
+      memoryInstance = await Memory.create({
+        dbPath,
+        config: {
+            embedder: {
+                provider: actualProvider,
+                config: actualConfig
+            }
+        }
+      });
+      return memoryInstance;
+    } catch(e) {
+      console.error("Failed to init powermem:", e);
+      memoryInstance = null;
+      return null;
     } finally {
-      this.isInitialized = true;
+      isInitializing = false;
     }
-  }
-
-  public isReady() {
-    return this.memory !== null;
-  }
-
-  public async search(query: string, conversationId: string, limit: number = 5) {
-    if (!this.memory) return [];
+  },
+  
+  reinit: async () => {
+    return powerMem.init(true);
+  },
+  
+  search: async (query: string, conversationId: string, limit: number) => {
+    if (!memoryInstance) return [];
     try {
-      const results = await this.memory.search(query, { 
-        runId: conversationId,
-        limit
-      });
-      return results.results;
-    } catch (e) {
-      console.error("[PowerMem] search error:", e);
+      const res = await memoryInstance.search(query, { filters: { conversationId }, limit });
+      return res.results || [];
+    } catch(e) {
+      console.error("Powermem search error:", e);
+      return [];
+    }
+  },
+  
+  getProfileAndSummary: async (conversationId: string) => {
+    if (!memoryInstance) return [];
+    try {
+       const res = await memoryInstance.getAll({ filters: { conversationId } });
+       const memories = res.memories || [];
+       return memories.filter((m: any) => m.metadata?.type === 'profile' || m.metadata?.type === 'summary');
+    } catch(e) {
+      return [];
+    }
+  },
+  
+  updateMemory: async (id: string, content: string) => {
+    if (!memoryInstance) return;
+    try {
+      await memoryInstance.update(id, content);
+    } catch(e) {}
+  },
+  
+  addMemory: async (content: string, conversationId: string, type: string) => {
+    if (!memoryInstance) return;
+    try {
+      await memoryInstance.add(content, { metadata: { conversationId, type } });
+    } catch(e) {}
+  },
+  
+  getAllMemories: async (conversationId?: string) => {
+    if (!memoryInstance) return [];
+    try {
+      const res = await memoryInstance.getAll(conversationId ? { filters: { conversationId } } : undefined);
+      return res.memories || [];
+    } catch(e) {
       return [];
     }
   }
+};
 
-  public async getProfileAndSummary(conversationId: string) {
-    if (!this.memory) return [];
-    try {
-      const results = await this.memory.getAll({
-        runId: conversationId,
-        limit: 100
-      });
-      return results.memories.filter((r: any) => r.metadata?.type === 'profile' || r.metadata?.type === 'summary');
-    } catch (e) {
-      console.error("[PowerMem] getProfileAndSummary error:", e);
-      return [];
-    }
-  }
-
-  public async addMemory(content: string, conversationId: string, type: string = 'fact') {
-    if (!this.memory) return;
-    try {
-      await this.memory.add({
-        content,
-        runId: conversationId,
-        metadata: { type }
-      });
-    } catch (e) {
-      console.error("[PowerMem] addMemory error:", e);
-    }
-  }
-
-  public async updateMemory(id: string, content: string) {
-    if (!this.memory) return;
-    try {
-      await this.memory.update(id, { content });
-    } catch (e) {
-      console.error("[PowerMem] updateMemory error:", e);
-    }
-  }
-
-  public async reloadConfig() {
-    if (this.memory) {
-      await this.memory.close();
-      this.memory = null;
-    }
-    this.isInitialized = false;
-    await this.init();
-  }
-}
-
-export const powerMem = new PowerMem();

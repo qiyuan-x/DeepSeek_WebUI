@@ -1,4 +1,5 @@
 import { Message, Conversation } from "../types";
+import { useSettingStore } from '../store/settingStore';
 
 const getAuthHeaders = (extraHeaders: Record<string, string> = {}) => {
   const key = localStorage.getItem('webui_secret_key');
@@ -28,6 +29,14 @@ const parseResponse = async (res: Response, defaultErrorMsg = '请求失败') =>
       try {
         const err = JSON.parse(text);
         errMsg = err.error || errMsg;
+        if (typeof errMsg === 'object' && errMsg !== null) {
+          const errObj = errMsg as any;
+          if (errObj.message) {
+            errMsg = String(errObj.message);
+          } else {
+            errMsg = JSON.stringify(errObj);
+          }
+        }
       } catch (e) {
         if (res.status === 413) {
           errMsg = '请求数据过大，超出了服务器限制 (Payload Too Large)。请清理历史记录或重启应用。';
@@ -43,9 +52,16 @@ const parseResponse = async (res: Response, defaultErrorMsg = '请求失败') =>
   
   const text = await res.text();
   try {
-    return text ? JSON.parse(text) : {};
+    const data = text ? JSON.parse(text) : {};
+    // Check if the successful response actually contains an error object (like balance does)
+    if (data.error && typeof data.error === 'object') {
+      if (data.error.message) data.error = data.error.message;
+      else data.error = JSON.stringify(data.error);
+    }
+    return data;
   } catch (e) {
-    throw new Error('服务器返回了无效的数据格式');
+    console.error("Invalid JSON format from server:", text);
+    throw new Error(`服务器返回了无效的数据格式: ${text.substring(0, 30)}`);
   }
 };
 
@@ -59,10 +75,26 @@ export const api = {
     return parseResponse(res, '验证失败');
   },
 
-  async getMemories(conversationName?: string): Promise<any[]> {
-    const url = conversationName ? `/api/memories?conversationName=${encodeURIComponent(conversationName)}` : "/api/memories";
+  async getMemories(conversationName?: string, conversationId?: string): Promise<any[]> {
+    let url = "/api/memories";
+    if (conversationName && conversationId) {
+      url = `/api/memories?conversationName=${encodeURIComponent(conversationName)}&conversationId=${encodeURIComponent(conversationId)}`;
+    } else if (conversationName) {
+      url = `/api/memories?conversationName=${encodeURIComponent(conversationName)}`;
+    } else if (conversationId) {
+      url = `/api/memories?conversationId=${encodeURIComponent(conversationId)}`;
+    }
     const res = await fetchWithAuth(url);
     return parseResponse(res, '获取记忆失败');
+  },
+
+  async ingestMemory(params: any): Promise<{usage: any}> {
+    const res = await fetchWithAuth("/api/memories/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    return parseResponse(res, '记忆整理失败');
   },
 
   async getConversations(): Promise<Conversation[]> {
@@ -139,6 +171,23 @@ export const api = {
     return parseResponse(res, '测试连接失败');
   },
 
+  async testEmbeddingConnection(provider: string, apiKey: string, model: string) {
+    const res = await fetchWithAuth("/api/test-embedding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, apiKey, model }),
+    });
+    return parseResponse(res, '测试 Embedding 连接失败');
+  },
+
+  async fetchModels(provider: string, apiKey: string, baseUrl?: string): Promise<{ models: string[] }> {
+    const params = new URLSearchParams({ provider, apiKey });
+    if (baseUrl) params.append('baseUrl', baseUrl);
+    
+    const res = await fetchWithAuth(`/api/models?${params.toString()}`);
+    return parseResponse(res, '获取模型列表失败');
+  },
+
   async getSettings() {
     const res = await fetchWithAuth("/api/settings");
     return parseResponse(res, '获取设置失败');
@@ -153,42 +202,94 @@ export const api = {
     return parseResponse(res, '保存设置失败');
   },
 
-  async extractPrompt(text: string, apiKey?: string) {
+  async extractPrompt(text: string, apiKey?: string, preference?: string) {
+    const { provider, baseUrl, baseUrls, model, models } = useSettingStore.getState().llmConfig;
+    const currentBaseUrl = baseUrl || baseUrls?.[provider] || '';
+    const currentModel = model || models?.[provider] || '';
     const res = await fetchWithAuth("/api/extract-prompt", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, apiKey }),
+      body: JSON.stringify({ text, apiKey, isReasoning: false, preference, provider, baseUrl: currentBaseUrl, model: currentModel }),
     });
     return parseResponse(res, '提取提示词失败');
   },
 
-  async generateImage(prompt: string, provider: string, apiKey?: string) {
+  async translatePrompt(text: string, apiKey?: string) {
+    const { provider, baseUrl, baseUrls, model, models } = useSettingStore.getState().llmConfig;
+    const currentBaseUrl = baseUrl || baseUrls?.[provider] || '';
+    const currentModel = model || models?.[provider] || '';
+    const res = await fetchWithAuth("/api/translate-prompt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, apiKey, isReasoning: false, provider, baseUrl: currentBaseUrl, model: currentModel }),
+    });
+    return parseResponse(res, '翻译提示词失败');
+  },
+
+  async reverseTranslatePrompt(text: string, apiKey?: string) {
+    const { provider, baseUrl, baseUrls, model, models } = useSettingStore.getState().llmConfig;
+    const currentBaseUrl = baseUrl || baseUrls?.[provider] || '';
+    const currentModel = model || models?.[provider] || '';
+    const res = await fetchWithAuth("/api/reverse-translate-prompt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, apiKey, isReasoning: false, provider, baseUrl: currentBaseUrl, model: currentModel }),
+    });
+    return parseResponse(res, '反向翻译提示词失败');
+  },
+
+  async generateImage(prompt: string, provider: string, apiKey?: string, model?: string) {
     const res = await fetchWithAuth("/api/generate-image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, provider, apiKey }),
+      body: JSON.stringify({ prompt, provider, apiKey, model }),
     });
     return parseResponse(res, '生成图片失败');
   },
 
   async chat(params: {
     messages: any[];
+    systemPrompt?: string;
     model: string;
     temperature: number;
     stream: boolean;
     apiKey?: string;
     provider?: string;
+    baseUrl?: string;
     stream_options?: any;
     useTieredMemory?: boolean;
+    memoryMode?: 'off' | 'simple' | 'powermem';
+    memorySummarizeFrequency?: number;
     skipMemoryIngest?: boolean;
     conversationId?: string;
     conversationName?: string;
+    isThinkingMode?: boolean;
+    reasoningEffort?: 'high' | 'max';
+    totalUserRounds?: number;
   }, signal?: AbortSignal) {
-    return fetchWithAuth("/api/chat", {
+    const res = await fetchWithAuth("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
       signal,
     });
+    
+    if (!res.ok) {
+      let errMsg = '对话请求失败';
+      try {
+        const text = await res.text();
+        try {
+          const err = JSON.parse(text);
+          errMsg = err.error || errMsg;
+        } catch (e) {
+          errMsg = `对话请求失败 (${res.status}): ${text.substring(0, 100)}`;
+        }
+      } catch (e) {
+        errMsg = `网络请求失败 (${res.status})`;
+      }
+      throw new Error(errMsg);
+    }
+    
+    return res;
   },
 };

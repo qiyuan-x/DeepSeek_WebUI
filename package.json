@@ -6,13 +6,13 @@
   "main": "electron.js",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "tsc && vite build",
+    "build": "npm run clean && tsc && vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist dist-server dist-electron",
     "lint": "tsc --noEmit",
     "build:server": "esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-server/server.js",
     "electron:dev": "concurrently \"npm run dev\" \"electron .\"",
-    "electron:build": "npm run build:server && npm run build && electron-builder"
+    "electron:build": "node scripts/cleanup.js && npm run clean && npm run build:server && npm run build && electron-builder"
   },
   "build": {
     "appId": "com.deepseek.webui",
@@ -41,8 +41,11 @@
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
+    "@langchain/core": "^1.1.46",
+    "@langchain/openai": "^1.4.5",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "@xenova/transformers": "^2.17.2",
     "better-sqlite3": "^12.6.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -52,9 +55,11 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "mysql2": "^3.19.0",
+    "openai": "^6.37.0",
     "powermem": "^0.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-easy-crop": "^5.5.7",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.5.0",

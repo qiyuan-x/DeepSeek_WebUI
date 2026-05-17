@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize data directory
-export const DATA_DIR = process.env.DATA_PATH || path.join(__dirname, "..", "data");
+export const DATA_DIR = process.env.DATA_PATH || path.join(process.cwd(), "data");
 export const DB_DIR = path.join(DATA_DIR, "database");
 export const CONFIG_DIR = path.join(DATA_DIR, "config");
 export const INDEX_FILE = path.join(DB_DIR, "index.json");

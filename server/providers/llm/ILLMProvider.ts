@@ -10,15 +10,17 @@ export interface ChatOptions {
   stream?: boolean;
   stream_options?: any;
   response_format?: any;
+  isThinkingMode?: boolean;
+  reasoningEffort?: 'high' | 'max';
 }
 
 export interface ILLMProvider {
-  chat(messages: ChatMessage[], options: ChatOptions, apiKey: string): Promise<string>;
+  chat(messages: ChatMessage[], options: ChatOptions, apiKey: string): Promise<{ content: string, usage?: any }>;
   streamChat(
     messages: ChatMessage[], 
     options: ChatOptions, 
     apiKey: string, 
-    onChunk: (chunk: string) => void,
+    onChunk: (chunk: string, reasoningChunk?: string | null) => void,
     onUsage?: (usage: any) => void
   ): Promise<void>;
 }

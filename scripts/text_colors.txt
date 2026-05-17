@@ -1,0 +1,282 @@
+98:      embeddingModel: 'text-embedding-3-small',
+151:          embeddingModel: 'text-embedding-3-small',
+435:          theme === 'dark' ? "bg-[#1A1A1A] text-white" : "bg-white text-[#1A1A1A]"
+443:            <Settings className={theme === 'dark' ? "text-white" : "text-[#1A1A1A]"} />
+444:            <h2 className="text-lg font-bold">设置与配置</h2>
+475:                  "flex items-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap",
+477:                    ? (theme === 'dark' ? "bg-white text-black" : "bg-[#1A1A1A] text-white")
+478:                    : (theme === 'dark' ? "text-gray-400 hover:bg-white/5 hover:text-white" : "text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#1A1A1A]")
+490:                 <div className="grid grid-cols-[1fr_auto] md:grid-cols-[auto_1fr_1fr_auto_auto] gap-4 px-4 py-3 text-xs font-bold text-[#6B7280] border-b dark:border-white/10 uppercase tracking-widest bg-gray-50/50 dark:bg-white/5 rounded-t-xl shrink-0">
+494:                  <div className="text-center hidden md:block">是否启用</div>
+495:                  <div className="text-right w-16">操作</div>
+499:                    <div key={p.id} className={cn("grid grid-cols-[1fr_auto] md:grid-cols-[auto_1fr_1fr_auto_auto] gap-4 px-4 py-4 rounded-xl items-center text-sm transition-colors border", theme === 'dark' ? "border-transparent hover:bg-white/5" : "border-transparent hover:bg-gray-50", tempSettings.provider === p.id && (theme === 'dark' ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-white shadow-sm'))}>
+508:                        <div className="text-gray-500 font-mono text-[10px] md:hidden">{p.type}</div>
+510:                      <div className="text-gray-500 font-mono text-xs hidden md:block">{p.type}</div>
+536:                      <div className="text-right flex items-center justify-end w-16">
+543:                          className="px-3 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 rounded-lg transition-colors"
+560:                     <h3 className="font-bold text-lg flex-1">配置模型 - {PROVIDERS_LIST.find(p => p.id === editingProvider)?.name}</h3>
+562:                        <span className="text-sm font-bold">返回</span>
+569:                        <h4 className="font-bold border-b pb-2 dark:border-white/10 text-sm flex justify-between items-center">
+571:                           <div className="flex items-center gap-2 text-xs font-normal">
+572:                             <span className="text-gray-500">是否启用</span>
+602:                              <label className="text-xs font-bold text-[#6B7280]">模型配置名称</label>
+607:                                className={cn("w-full border rounded-lg px-3 py-2 text-sm outline-none opacity-70", theme === 'dark' ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200")}
+611:                              <label className="text-xs font-bold text-[#6B7280]">接口格式</label>
+616:                                className={cn("w-full border rounded-lg px-3 py-2 text-sm outline-none opacity-70", theme === 'dark' ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200")}
+622:                           <label className="text-xs font-bold text-[#6B7280]">备注</label>
+633:                             className={cn("w-full border rounded-lg px-3 py-2 text-sm outline-none resize-none transition-colors", theme === 'dark' ? "bg-white/5 border-white/10 focus:border-white/30" : "bg-white border-gray-200 focus:border-gray-400")}
+640:                        <h4 className="font-bold border-b pb-2 dark:border-white/10 text-sm">调用信息</h4>
+644:                              <label className="text-xs font-bold text-[#6B7280]">基础URL</label>
+665:                                className={cn("w-full border rounded-lg px-3 py-2 text-sm outline-none transition-colors", theme === 'dark' ? "bg-white/5 border-white/10 focus:border-white/30" : "bg-white border-gray-200 focus:border-gray-400")}
+670:                                <label className="text-xs font-bold text-[#6B7280]">
+671:                                  模型名称 <span className="text-red-500">*</span>
+674:                                {isFetchingModels && <RefreshCw size={12} className="animate-spin text-blue-500" />}
+691:                                  className={cn("w-full border rounded-lg px-3 py-2 text-sm outline-none transition-colors pr-8", theme === 'dark' ? "bg-white/5 border-white/10 focus:border-white/30" : "bg-white border-gray-200 focus:border-gray-400")}
+695:                                      className="absolute right-1 top-1 bottom-1 w-6 flex items-center justify-center cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+718:                                          className={cn("px-3 py-2 text-sm cursor-pointer truncate transition-colors", theme === 'dark' ? "hover:bg-white/10 text-white" : "hover:bg-gray-100 text-gray-900")}
+731:                                 <label className="text-xs font-bold text-[#6B7280]">API密钥 <span className="text-red-500">*</span></label>
+734:                                      <button onClick={fetchBalanceForEditingProvider} className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:underline">
+752:                                className={cn("w-full border rounded-lg px-3 py-2 text-sm outline-none transition-colors", theme === 'dark' ? "bg-white/5 border-white/10 focus:border-white/30" : "bg-white border-gray-200 focus:border-gray-400")}
+755:                                 <div className="text-xs text-emerald-600 mt-1 flex items-center gap-1 bg-emerald-50 p-1.5 rounded border border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20">
+760:                                 <div className="text-xs text-red-600 mt-1">{balanceError}</div>
+770:                            "text-xs font-medium flex items-center gap-2 px-3 py-2.5 rounded-lg flex-1 min-w-[200px]",
+772:                              ? "text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10" 
+773:                              : "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-500/10"
+787:                            "px-5 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap text-sm ml-auto",
+789:                              ? "opacity-50 cursor-not-allowed bg-gray-300 text-gray-500 dark:bg-white/5 dark:text-gray-500"
+790:                              : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+808:                          <h4 className="font-bold border-b pb-2 dark:border-white/10 text-sm">其他配置</h4>
+813:                                 <label className="text-xs font-bold text-[#6B7280]">温度 (Temperature)</label>
+814:                                 <span className={cn("font-mono text-xs font-bold px-2 py-0.5 rounded", theme === 'dark' ? "bg-[#333] text-gray-200" : "bg-gray-100 text-gray-800")}>
+819:                                 <span className="text-xs font-medium text-gray-400">0.0</span>
+831:                                 <span className="text-xs font-medium text-gray-400">2.0</span>
+837:                                 <label className="text-xs font-bold text-[#6B7280]">思考强度 (Reasoning Effort)</label>
+843:                                     className={cn("w-full border rounded-lg px-3 py-2 text-sm outline-none transition-colors appearance-none bg-no-repeat", theme === 'dark' ? "bg-white/5 border-white/10 focus:border-white/30" : "bg-white border-gray-200 focus:border-gray-400")}
+849:                                  <p className="mt-1 text-[11px] text-gray-400">设置思考模式开启时，模型的思考强度。默认 high，复杂需求可选 max（仅部分 API 格式支持）。</p>
+863:                  <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">AI 模型提供商 (Provider)</label>
+879:                      "flex-1 border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors appearance-none",
+880:                      theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+894:                      "px-4 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap text-sm",
+896:                        ? "opacity-50 cursor-not-allowed bg-gray-300 text-gray-500 dark:bg-white/5 dark:text-gray-500"
+897:                        : (theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]")
+915:                    "text-xs font-medium flex items-center gap-2 px-3 py-1.5 rounded-lg mt-2 w-fit",
+917:                      ? "text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10" 
+918:                      : "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-500/10"
+930:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">DeepSeek API Key</label>
+945:                            "flex-1 border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+946:                            theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+952:                            "px-4 py-2 rounded-xl transition-colors text-sm font-bold flex items-center gap-2",
+953:                            theme === 'dark' ? "bg-white/5 text-white hover:bg-white/10" : "bg-[#F3F4F6] text-[#1A1A1A] hover:bg-[#E5E7EB]"
+963:                          theme === 'dark' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-emerald-50 border-emerald-100 text-emerald-700"
+967:                            <span className="text-xs font-bold">可用余额:</span>
+969:                          <span className="text-sm font-bold">
+977:                          theme === 'dark' ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-red-50 border-red-100 text-red-700"
+981:                            <span className="text-xs font-bold">错误:</span>
+983:                          <span className="text-sm font-bold">
+991:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">Base URL (可选, 自定义代理接口)</label>
+1005:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1006:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1014:                        <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">Temperature (温度)</label>
+1015:                        <span className="text-xs font-bold">{tempSettings.temperature}</span>
+1033:                        <div className="flex items-center gap-2 text-[10px] font-bold text-[#6B7280] uppercase">
+1037:                        <div className="grid grid-cols-2 gap-4 text-[11px]">
+1039:                            <span className={theme === 'dark' ? "text-white" : "text-[#1A1A1A]"}>代码/数学: <span className="font-mono font-bold">0.0</span></span>
+1040:                            <span className="text-[#9CA3AF]">追求极致的确定性</span>
+1043:                            <span className={theme === 'dark' ? "text-white" : "text-[#1A1A1A]"}>创意写作: <span className="font-mono font-bold">1.5</span></span>
+1044:                            <span className="text-[#9CA3AF]">追求发散与想象力</span>
+1047:                            <span className={theme === 'dark' ? "text-white" : "text-[#1A1A1A]"}>通用对话: <span className="font-mono font-bold">0.7</span></span>
+1048:                            <span className="text-[#9CA3AF]">平衡准确与自然</span>
+1051:                            <span className={theme === 'dark' ? "text-white" : "text-[#1A1A1A]"}>翻译: <span className="font-mono font-bold">1.1</span></span>
+1052:                            <span className="text-[#9CA3AF]">兼顾直译与意译</span>
+1064:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">OpenAI API Key</label>
+1078:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1079:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1085:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">模型 (Model)</label>
+1099:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1100:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1106:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">Base URL (可选, 自定义代理接口)</label>
+1120:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1121:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1132:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">Anthropic API Key</label>
+1146:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1147:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1153:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">模型 (Model)</label>
+1167:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1168:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1179:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">Gemini API Key</label>
+1193:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1194:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1200:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">模型 (Model)</label>
+1214:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1215:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1225:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">Zhipu API Key</label>
+1239:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1240:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1246:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">模型名称 (Model)</label>
+1260:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1261:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1267:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">Base URL (可选)</label>
+1281:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1282:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1293:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">API Key (必填)</label>
+1307:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1308:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1314:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">模型名称 (Model - 必填)</label>
+1328:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1329:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1335:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">Base URL (必填)</label>
+1349:                          "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1350:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1367:                            <div className={cn("w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-xl", theme === 'dark' ? "bg-white/10" : "bg-blue-50")}>
+1371:                               <h3 className="font-bold text-sm">对话记忆模块</h3>
+1372:                               <p className="text-xs text-gray-400 mt-1 line-clamp-3">启用后拥有超长对话记忆，支持自动总结与事实提取。</p>
+1378:                              className="px-3 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 rounded-lg transition-colors"
+1408:                          <div className={cn("w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-xl", theme === 'dark' ? "bg-white/10" : "bg-pink-50")}>
+1412:                             <h3 className="font-bold text-sm">AI 绘画功能</h3>
+1413:                             <p className="text-xs text-gray-400 mt-1 line-clamp-2 max-w-[280px]">气泡底部显示“描绘此景/此人”按钮，可将文字转化为图像。</p>
+1419:                             className="px-3 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 rounded-lg transition-colors"
+1449:                     <h3 className="font-bold text-lg flex-1">配置模块 - 对话记忆</h3>
+1451:                        <span className="text-sm font-bold">返回</span>
+1457:                        <label className="text-xs font-bold text-[#6B7280]">记忆模式选择</label>
+1465:                             "w-full px-3 py-2 text-sm rounded-xl border outline-none transition-colors",
+1466:                             theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:border-white/30" : "bg-gray-50 border-gray-200 text-gray-900 focus:border-gray-400 focus:bg-white"
+1476:                        <h3 className="text-sm font-bold opacity-80 flex items-center gap-2">记忆摘要处理 (LLM)</h3>
+1478:                          <span className="text-xs font-medium text-gray-500">复用对话 LLM 配置</span>
+1500:                            <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">提供商</label>
+1505:                                "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors appearance-none",
+1506:                                theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1519:                            <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">API Key</label>
+1526:                                "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1527:                                theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1533:                            <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">模型名称</label>
+1540:                                "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1541:                                theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1554:                            <h3 className="text-sm font-bold opacity-80 flex items-center gap-2 mb-6">向量化引擎检索 (Embedding)</h3>
+1557:                              <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">提供商</label>
+1562:                                  "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors appearance-none",
+1563:                                  theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1574:                            <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">API Key</label>
+1581:                                "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1582:                                theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1588:                            <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">模型名称</label>
+1603:                                        "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors appearance-none",
+1604:                                        theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1627:                                  placeholder="例如: text-embedding-3-small"
+1629:                                    "w-full border-none rounded-xl px-4 py-2.5 text-sm outline-none transition-colors",
+1630:                                    theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1640:                               "text-xs font-medium flex items-center gap-2 px-3 py-2.5 rounded-lg flex-1 min-w-[200px]",
+1642:                                 ? "text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10" 
+1643:                                 : "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-500/10"
+1668:                                 "px-5 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap text-sm ml-auto",
+1670:                                   ? "opacity-50 cursor-not-allowed bg-gray-300 text-gray-500 dark:bg-white/5 dark:text-gray-500"
+1671:                                   : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+1690:                      <div className={cn("p-4 rounded-xl text-xs leading-relaxed space-y-2 mt-4", theme === 'dark' ? "bg-white/5 border border-white/10" : "bg-gray-50 border border-gray-200 text-[#1A1A1A]")}>
+1710:                     <h3 className="font-bold text-lg flex-1">配置模块 - AI 绘画功能</h3>
+1712:                        <span className="text-sm font-bold">返回</span>
+1718:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">服务商选择</label>
+1723:                          "w-full border-none rounded-xl px-4 py-3 text-sm outline-none transition-colors appearance-none",
+1724:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1734:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">API Key</label>
+1741:                          "w-full border-none rounded-xl px-4 py-3 text-sm outline-none transition-colors",
+1742:                          theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1748:                      <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">模型名称 (Model)</label>
+1754:                            "w-full border-none rounded-xl px-4 py-3 text-sm outline-none transition-colors appearance-none",
+1755:                            theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1771:                            "w-full border-none rounded-xl px-4 py-3 text-sm outline-none transition-colors",
+1772:                            theme === 'dark' ? "bg-white/5 text-white focus:ring-1 focus:ring-white/20" : "bg-[#F3F4F6] text-[#1A1A1A] focus:ring-1 focus:ring-[#1A1A1A]"
+1781:                         "text-xs font-medium flex items-center gap-2 px-3 py-2.5 rounded-lg flex-1 min-w-[200px]",
+1783:                           ? "text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10" 
+1784:                           : "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-500/10"
+1816:                          "px-5 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap text-sm ml-auto",
+1818:                            ? "opacity-50 cursor-not-allowed bg-gray-300 text-gray-500 dark:bg-white/5 dark:text-gray-500"
+1819:                            : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+1842:                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+1844:                        <span className="text-sm font-medium">开启一键直出（跳过提示词确认直接生成）</span>
+1856:                    <span className="text-sm font-bold uppercase tracking-widest text-[#6B7280]">界面与交互设置</span>
+1857:                    <ChevronDown className={cn("transition-transform text-gray-400", expandedThemeSection === 'ui' ? "rotate-180" : "")} size={20} />
+1863:                    <label className="text-xs font-bold text-[#6B7280]">1. 主题模式</label>
+1873:                          "py-2.5 px-4 text-center rounded-xl border transition-all flex items-center justify-center gap-2",
+1875:                            ? "border-[#1A1A1A] bg-[#F9FAFB] ring-1 ring-[#1A1A1A] text-[#1A1A1A]" 
+1876:                            : "border-white/10 hover:border-white/30 text-gray-400"
+1879:                        <span className="text-sm font-bold">浅色模式</span>
+1889:                          "py-2.5 px-4 text-center rounded-xl border transition-all flex items-center justify-center gap-2",
+1891:                            ? "border-white bg-white/10 text-white" 
+1892:                            : "border-[#E5E7EB] hover:border-[#1A1A1A] text-[#6B7280]"
+1895:                        <span className="text-sm font-bold">深色模式</span>
+1901:                    <label className="text-xs font-bold text-[#6B7280]">2. 对话风格 (Layout)</label>
+1910:                          "py-2.5 px-4 text-center rounded-xl border transition-all flex items-center justify-center gap-2",
+1912:                            ? (theme === 'dark' ? "border-white bg-white/10 text-white" : "border-[#1A1A1A] bg-[#F9FAFB] ring-1 ring-[#1A1A1A] text-[#1A1A1A]")
+1913:                            : (theme === 'dark' ? "border-white/10 hover:border-white/30 text-gray-400" : "border-[#E5E7EB] hover:border-[#1A1A1A] text-[#6B7280]")
+1916:                        <span className="text-sm font-bold">默认风格</span>
+1925:                          "py-2.5 px-4 text-center rounded-xl border transition-all flex items-center justify-center gap-2",
+1927:                            ? (theme === 'dark' ? "border-white bg-white/10 text-white" : "border-[#1A1A1A] bg-[#F9FAFB] ring-1 ring-[#1A1A1A] text-[#1A1A1A]")
+1928:                            : (theme === 'dark' ? "border-white/10 hover:border-white/30 text-gray-400" : "border-[#E5E7EB] hover:border-[#1A1A1A] text-[#6B7280]")
+1931:                        <span className="text-sm font-bold">微信/QQ风格</span>
+1937:                    <label className="text-xs font-bold text-[#6B7280]">3. 发送快捷键</label>
+1946:                          "py-2 px-4 text-center rounded-xl border transition-all flex flex-col items-center justify-center gap-0.5",
+1948:                            ? (theme === 'dark' ? "border-white bg-white/10 text-white" : "border-[#1A1A1A] bg-[#F9FAFB] ring-1 ring-[#1A1A1A] text-[#1A1A1A]")
+1949:                            : (theme === 'dark' ? "border-white/10 hover:border-white/30 text-gray-400" : "border-[#E5E7EB] hover:border-[#1A1A1A] text-[#6B7280]")
+1952:                        <span className="text-sm font-bold">Enter 发送</span>
+1953:                        <span className="text-[10px] opacity-70">Ctrl+Enter 换行</span>
+1962:                          "py-2 px-4 text-center rounded-xl border transition-all flex flex-col items-center justify-center gap-0.5",
+1964:                            ? (theme === 'dark' ? "border-white bg-white/10 text-white" : "border-[#1A1A1A] bg-[#F9FAFB] ring-1 ring-[#1A1A1A] text-[#1A1A1A]")
+1965:                            : (theme === 'dark' ? "border-white/10 hover:border-white/30 text-gray-400" : "border-[#E5E7EB] hover:border-[#1A1A1A] text-[#6B7280]")
+1968:                        <span className="text-sm font-bold">Ctrl+Enter 发送</span>
+1969:                        <span className="text-[10px] opacity-70">Enter 换行</span>
+1985:                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+1987:                        <span className="text-sm font-medium">在气泡下方显示响应消耗分析 (Tokens & 耗时)</span>
+1997:                    <span className="text-sm font-bold uppercase tracking-widest text-[#6B7280]">个性化资源管理</span>
+1998:                    <ChevronDown className={cn("transition-transform text-gray-400", expandedThemeSection === 'assets' ? "rotate-180" : "")} size={20} />
+2004:                    <label className="text-xs font-bold text-[#6B7280]">1. 聊天背景轮播</label>
+2020:                                  className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 scale-75 group-hover:scale-100 transition-transform"
+2032:                          <HelpCircle size={20} className={cn("transition-colors", theme === 'dark' ? "text-gray-400 group-hover:text-white" : "text-[#9CA3AF] group-hover:text-[#1A1A1A]")} />
+2033:                          <span className="text-[10px] font-bold text-[#9CA3AF] uppercase">添加图片</span>
+2046:                          <label className="text-xs text-gray-500 whitespace-nowrap">图片轮播间隔 (秒)</label>
+2057:                            className={cn("w-20 px-2 py-1 text-xs border rounded", theme === 'dark' ? "bg-white/5 border-white/10" : "bg-white border-gray-200")}
+2062:                      <p className="text-[10px] text-[#9CA3AF] mt-2">支持 JPG, PNG, WEBP。可一次选择多张实现自动轮播。</p>
+2067:                    <label className="text-xs font-bold text-[#6B7280]">2. 个性化头像 (仅微信/QQ风格显示)</label>
+2083:                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 z-10"
+2090:                              <User size={20} className="text-[#9CA3AF]" />
+2091:                              <span className="text-[10px] font-bold text-[#9CA3AF] uppercase">上传用户头像</span>
+2127:                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 z-10"
+2134:                              <Brain size={20} className="text-[#9CA3AF]" />
+2135:                              <span className="text-[10px] font-bold text-[#9CA3AF] uppercase">上传AI头像</span>
+2160:                    <label className="text-xs font-bold text-[#6B7280]">3. 个性化名称</label>
+2163:                        <label className="text-[10px] text-[#9CA3AF] uppercase">用户昵称</label>
+2174:                            "w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-1 focus:ring-black",
+2175:                            theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:ring-white/20" : "bg-white border-gray-200"
+2180:                        <label className="text-[10px] text-[#9CA3AF] uppercase">AI 助手名称</label>
+2191:                            "w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-1 focus:ring-black",
+2192:                            theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:ring-white/20" : "bg-white border-gray-200"
+2209:                    <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">AI设定模板</label>
+2219:                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors",
+2220:                        theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]"
+2231:                        "p-8 text-center rounded-2xl border-2 border-dashed",
+2232:                        theme === 'dark' ? "border-white/5 text-gray-500" : "border-[#F3F4F6] text-[#9CA3AF]"
+2235:                        <p className="text-xs font-medium">暂无AI设定模板，点击上方按钮新建</p>
+2257:                                "flex-1 bg-transparent border-none outline-none text-sm font-bold",
+2258:                                theme === 'dark' ? "text-white" : "text-[#1A1A1A]"
+2268:                              className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+2283:                              "w-full bg-transparent border-none outline-none text-sm resize-none min-h-[80px]",
+2284:                              theme === 'dark' ? "text-gray-300" : "text-gray-600"
+2296:                    <label className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">故事设定模板</label>
+2306:                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors",
+2307:                        theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]"
+2318:                        "p-8 text-center rounded-2xl border-2 border-dashed",
+2319:                        theme === 'dark' ? "border-white/5 text-gray-500" : "border-[#F3F4F6] text-[#9CA3AF]"
+2322:                        <p className="text-xs font-medium">暂无故事设定模板，点击上方按钮新建</p>
+2344:                                "flex-1 bg-transparent border-none outline-none text-sm font-bold",
+2345:                                theme === 'dark' ? "text-white" : "text-[#1A1A1A]"
+2355:                              className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+2370:                              "w-full bg-transparent border-none outline-none text-sm resize-none min-h-[80px]",
+2371:                              theme === 'dark' ? "text-gray-300" : "text-gray-600"
+2385:                  <h3 className="text-sm font-bold">常见问题</h3>
+2386:                  <div className="space-y-4 text-sm">
+2392:                      <p className={theme === 'dark' ? "text-gray-400" : "text-gray-600"}>
+2401:                      <p className={theme === 'dark' ? "text-gray-400" : "text-gray-600"}>
+2435:          <div className="text-xs flex items-center gap-2">
+2438:                 <motion.div key="saving" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center text-blue-500 gap-1.5 font-bold">
+2444:                 <motion.div key="saved" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center text-emerald-600 dark:text-emerald-500 gap-1.5 font-bold">
+2450:                 <motion.div key="idle" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className={cn("flex items-center gap-1.5", theme === 'dark' ? "text-gray-400" : "text-gray-500 font-medium")}>
+2460:              "px-8 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg",
+2461:              theme === 'dark' ? "bg-white text-black hover:bg-gray-200" : "bg-[#1A1A1A] text-white hover:bg-[#333]"

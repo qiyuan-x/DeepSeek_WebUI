@@ -17,6 +17,7 @@ function createWindow() {
     minWidth: 600,
     minHeight: 500,
     resizable: true,
+    center: true, // 确保启动时居中
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -32,6 +33,13 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// 确保所有的Electron配置数据也保存在exe同级目录下
+const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath);
+const localUserDataPath = app.isPackaged 
+  ? path.join(exeDir, 'electron_data')
+  : path.join(__dirname, 'electron_data');
+app.setPath('userData', localUserDataPath);
 
 function killServer() {
   if (serverProcess) {

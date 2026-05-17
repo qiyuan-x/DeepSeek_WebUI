@@ -26,7 +26,7 @@ export const StoryDiscussionModal: React.FC<StoryDiscussionModalProps> = ({
   handleSendDiscussionMessage,
   isDiscussionLoading
 }) => {
-  const { theme } = useSettingStore();
+  const { theme, userName, aiName } = useSettingStore(s => s.uiConfig);
   const { setStoryDiscussionOpen } = useUIStore();
   const discussionChatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -117,6 +117,16 @@ export const StoryDiscussionModal: React.FC<StoryDiscussionModalProps> = ({
                       {/* Meta Info */}
                       {(msg.tokens > 0 || msg.cost > 0) && (
                         <div className="flex items-center gap-3 px-1 mt-1 text-[10px] font-bold text-[#9CA3AF] uppercase tracking-tighter">
+                          {(msg.model || aiName) && msg.role !== 'user' && (
+                            <span className="bg-[#9CA3AF]/10 text-[#9CA3AF] px-1.5 py-0.5 rounded">
+                              {aiName || msg.model}
+                            </span>
+                          )}
+                          {msg.role === 'user' && userName && (
+                            <span className="bg-[#9CA3AF]/10 text-[#9CA3AF] px-1.5 py-0.5 rounded">
+                              {userName}
+                            </span>
+                          )}
                           {msg.tokens > 0 ? (
                             <span 
                               title={`${msg.role === 'user' ? '输入' : '输出'} Tokens: ${msg.tokens}\n消耗: ￥${(msg.cost || 0).toFixed(4)}`}

@@ -7,15 +7,26 @@ import crypto from "crypto";
 import { DATA_DIR, CONFIG_DIR, SECRET_KEY_FILE } from "./server/config.js";
 import settingsRouter from "./server/routes/settings.js";
 import memoryRouter from "./server/routes/memory.js";
+import conversationsRouter from "./server/routes/conversations.js";
 import imageRouter from "./server/routes/image.js";
 import chatRouter from "./server/routes/chat.js";
-
-dotenv.config();
+import embeddingsRouter from "./server/routes/embeddings.js";
+import { MigrationService } from "./server/services/MigrationService.js";
+import { powerMem } from "./server/powermem.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
+  const { DATA_DIR, CONFIG_DIR, SECRET_KEY_FILE } = await import("./server/config.js");
+  dotenv.config({ path: path.join(DATA_DIR, '.env') });
+
+  // Run migration on startup
+  MigrationService.runMigration();
+  
+  // Pre-initialize memory early to avoid lag on first message
+  powerMem.init(true).catch(console.error);
+
   const app = express();
   const PORT = process.env.NODE_ENV === 'production' ? 2233 : 3000;
 
@@ -79,36 +90,13 @@ async function startServer() {
     }
   });
 
-  // Settings API
-  const SETTINGS_FILE = path.join(CONFIG_DIR, "settings.json");
-
-  app.get("/api/settings", (req, res) => {
-    try {
-      if (fs.existsSync(SETTINGS_FILE)) {
-        const data = fs.readFileSync(SETTINGS_FILE, "utf-8");
-        res.json(JSON.parse(data));
-      } else {
-        res.json({});
-      }
-    } catch (error) {
-      res.status(500).json({ error: "Failed to load settings" });
-    }
-  });
-
-  app.post("/api/settings", (req, res) => {
-    try {
-      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(req.body, null, 2));
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to save settings" });
-    }
-  });
-
-  // Register Routers
-  app.use("/api", settingsRouter);
+    // Settings API is handled by settingsRouter
+    app.use("/api", settingsRouter);
   app.use("/api", memoryRouter);
+  app.use("/api", conversationsRouter);
   app.use("/api", imageRouter);
   app.use("/api", chatRouter);
+  app.use("/api", embeddingsRouter);
 
   // Vite middleware for development
   const __dirname = path.dirname(fileURLToPath(import.meta.url));

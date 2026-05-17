@@ -12,87 +12,168 @@ interface PowerMemConfig {
   llmModel: string;
 }
 
-interface SettingsState {
+export interface LlmConfig {
   provider: string;
   apiKeys: Record<string, string>;
-  apiKey: string; // Keep for backward compatibility or current provider's key
+  apiKey: string;
   models: Record<string, string>;
-  model: string; // Keep for backward compatibility or current provider's model
+  model: string;
   baseUrls: Record<string, string>;
   baseUrl: string;
+  providerNotes?: Record<string, string>;
   temperature: number;
+  isThinkingMode: boolean;
+  reasoningEffort: 'high' | 'max';
+}
+
+export interface UiConfig {
   theme: 'light' | 'dark';
   globalTheme: 'light' | 'dark';
   bgImage: string | null;
-  promptTemplates: PromptTemplate[];
-  storyTemplates: PromptTemplate[];
+  bgImages: string[];
+  bgImageInterval: number;
+  chatLayout: 'default' | 'wechat' | 'qq';
+  sendBehavior: 'enter' | 'ctrl_enter';
+  userAvatar: string | null;
+  aiAvatar: string | null;
+  userName: string | null;
+  aiName: string | null;
+  showMessageMeta: boolean;
+}
+
+export interface MemoryConfig {
   useTieredMemory: boolean;
+  memoryMode: 'off' | 'simple' | 'powermem';
+  memorySummarizeFrequency: number;
+  recentHistoryRounds: number;
   powermemConfig: PowerMemConfig;
+}
+
+export interface PaintingConfig {
   isPaintingEnabled: boolean;
   paintingProvider: string;
+  paintingModel: string;
   paintingApiKey: string;
-  quickGenerate: boolean;
+}
 
-  setSettings: (settings: Partial<SettingsState>) => void;
+export interface SystemConfig {
+  promptTemplates: PromptTemplate[];
+  storyTemplates: PromptTemplate[];
+  quickGenerate: boolean;
+}
+
+interface SettingsState {
+  // Nested Configurations
+  llmConfig: LlmConfig;
+  uiConfig: UiConfig;
+  memoryConfig: MemoryConfig;
+  paintingConfig: PaintingConfig;
+  systemConfig: SystemConfig;
+
+  setSettings: (settings: Partial<LlmConfig & UiConfig & MemoryConfig & PaintingConfig & SystemConfig>) => void;
   loadSettings: () => Promise<void>;
-  saveSettings: (settings: Partial<SettingsState>) => Promise<void>;
+  saveSettings: (settings: Partial<LlmConfig & UiConfig & MemoryConfig & PaintingConfig & SystemConfig>) => Promise<void>;
 }
 
 export const useSettingStore = create<SettingsState>((set, get) => ({
-  provider: 'deepseek',
-  apiKeys: {},
-  apiKey: '',
-  models: {},
-  model: 'deepseek-chat',
-  baseUrls: {},
-  baseUrl: '',
-  temperature: 0.7,
-  theme: 'light',
-  globalTheme: 'light',
-  bgImage: null,
-  promptTemplates: [],
-  storyTemplates: [],
-  useTieredMemory: true,
-  powermemConfig: {
-    useGlobalLLM: false,
-    embeddingProvider: 'openai',
-    embeddingApiKey: '',
-    embeddingModel: 'text-embedding-3-small',
-    llmProvider: 'openai',
-    llmApiKey: '',
-    llmModel: 'gpt-4o-mini'
+  llmConfig: {
+    provider: 'deepseek',
+    apiKeys: {},
+    apiKey: '',
+    models: {},
+    model: 'deepseek-v4-flash',
+    baseUrls: {},
+    baseUrl: '',
+    temperature: 0.7,
+    isThinkingMode: false,
+    reasoningEffort: 'high',
   },
-  isPaintingEnabled: false,
-  paintingProvider: 'jimeng',
-  paintingApiKey: '',
-  quickGenerate: false,
+  uiConfig: {
+    theme: 'light',
+    globalTheme: 'light',
+    bgImage: null,
+    bgImages: [],
+    bgImageInterval: 300,
+    chatLayout: 'default',
+    sendBehavior: 'enter',
+    userAvatar: null,
+    aiAvatar: null,
+    userName: null,
+    aiName: null,
+    showMessageMeta: true,
+  },
+  memoryConfig: {
+    useTieredMemory: true,
+    memoryMode: 'simple',
+    memorySummarizeFrequency: 1,
+    recentHistoryRounds: 5,
+    powermemConfig: {
+      useGlobalLLM: true,
+      embeddingProvider: 'openai',
+      embeddingApiKey: '',
+      embeddingModel: 'text-embedding-3-small',
+      llmProvider: 'openai',
+      llmApiKey: '',
+      llmModel: 'gpt-4o-mini'
+    }
+  },
+  paintingConfig: {
+    isPaintingEnabled: false,
+    paintingProvider: 'zhipuai',
+    paintingModel: 'cogview-3-plus',
+    paintingApiKey: '',
+  },
+  systemConfig: {
+    promptTemplates: [],
+    storyTemplates: [],
+    quickGenerate: false,
+  },
 
   setSettings: (settings) => set((state) => {
-    const newState = { ...state, ...settings };
-    // Sync apiKey with current provider's key if provider or apiKeys changed
+    // Determine which nested config should be updated
+    const newState = { ...state };
+
+    const updateConfig = <T extends keyof SettingsState>(configKey: T, keys: string[]) => {
+      let updated = false;
+      const newSubConfig = { ...state[configKey] } as any;
+      keys.forEach(k => {
+        if ((settings as any)[k] !== undefined) {
+          newSubConfig[k] = (settings as any)[k];
+          updated = true;
+        }
+      });
+      if (updated) {
+        newState[configKey] = newSubConfig;
+      }
+    };
+
+    updateConfig('llmConfig', ['provider', 'apiKeys', 'apiKey', 'models', 'model', 'baseUrls', 'baseUrl', 'providerNotes', 'temperature', 'isThinkingMode', 'reasoningEffort']);
+    updateConfig('uiConfig', ['theme', 'globalTheme', 'bgImage', 'bgImages', 'bgImageInterval', 'chatLayout', 'sendBehavior', 'userAvatar', 'aiAvatar', 'userName', 'aiName', 'showMessageMeta']);
+    updateConfig('memoryConfig', ['useTieredMemory', 'memoryMode', 'memorySummarizeFrequency', 'recentHistoryRounds', 'powermemConfig']);
+    updateConfig('paintingConfig', ['isPaintingEnabled', 'paintingProvider', 'paintingModel', 'paintingApiKey']);
+    updateConfig('systemConfig', ['promptTemplates', 'storyTemplates', 'quickGenerate']);
+
+    // llm sync logic
+    const llm = newState.llmConfig;
     if (settings.provider || settings.apiKeys) {
-      newState.apiKey = newState.apiKeys[newState.provider] || '';
+      llm.apiKey = llm.apiKeys[llm.provider] || '';
     }
-    // If apiKey is explicitly set, update the apiKeys map for current provider
     if (settings.apiKey !== undefined) {
-      newState.apiKeys = { ...newState.apiKeys, [newState.provider]: settings.apiKey };
+      llm.apiKeys = { ...llm.apiKeys, [llm.provider]: settings.apiKey };
     }
-    // Sync model with current provider's model if provider or models changed
     if (settings.provider || settings.models) {
-      newState.model = newState.models[newState.provider] || (newState.provider === 'deepseek' ? 'deepseek-chat' : newState.provider === 'openai' ? 'gpt-4o' : newState.provider === 'anthropic' ? 'claude-3-5-sonnet-20240620' : newState.provider === 'custom' ? '' : 'gemini-1.5-pro');
+      llm.model = llm.models[llm.provider] || (llm.provider === 'deepseek' ? 'deepseek-v4-flash' : llm.provider === 'openai' ? 'gpt-4o' : llm.provider === 'dashscope' ? 'qwen-plus' : llm.provider === 'local' ? 'llama3' : llm.provider === 'custom' ? '' : 'gemini-1.5-pro');
     }
-    // If model is explicitly set, update the models map for current provider
     if (settings.model !== undefined) {
-      newState.models = { ...newState.models, [newState.provider]: settings.model };
+      llm.models = { ...llm.models, [llm.provider]: settings.model };
     }
-    // Sync baseUrl with current provider's baseUrl if provider or baseUrls changed
     if (settings.provider || settings.baseUrls) {
-      newState.baseUrl = newState.baseUrls[newState.provider] || '';
+      llm.baseUrl = llm.baseUrls[llm.provider] || '';
     }
-    // If baseUrl is explicitly set, update the baseUrls map for current provider
     if (settings.baseUrl !== undefined) {
-      newState.baseUrls = { ...newState.baseUrls, [newState.provider]: settings.baseUrl };
+      llm.baseUrls = { ...llm.baseUrls, [llm.provider]: settings.baseUrl };
     }
+
     return newState;
   }),
 
@@ -102,35 +183,62 @@ export const useSettingStore = create<SettingsState>((set, get) => ({
       if (settings && !settings.error) {
         const provider = settings.provider || 'deepseek';
         const apiKeys = settings.apiKeys || { deepseek: settings.apiKey || '' };
-        const models = settings.models || { deepseek: settings.model || 'deepseek-chat' };
+        const models = settings.models || { deepseek: settings.model || 'deepseek-v4-flash' };
         const baseUrls = settings.baseUrls || { deepseek: settings.baseUrl || '' };
         set({
-          provider,
-          apiKeys,
-          apiKey: apiKeys[provider] || '',
-          models,
-          model: models[provider] || (provider === 'deepseek' ? 'deepseek-chat' : provider === 'openai' ? 'gpt-4o' : provider === 'anthropic' ? 'claude-3-5-sonnet-20240620' : provider === 'custom' ? '' : 'gemini-1.5-pro'),
-          baseUrls,
-          baseUrl: baseUrls[provider] || '',
-          temperature: settings.temperature ?? 0.7,
-          theme: settings.theme || 'light',
-          globalTheme: settings.theme || 'light',
-          bgImage: settings.bgImage || null,
-          promptTemplates: settings.promptTemplates || [],
-          storyTemplates: settings.storyTemplates || [],
-          useTieredMemory: settings.useTieredMemory ?? true,
-          powermemConfig: settings.powermemConfig || {
-            embeddingProvider: 'openai',
-            embeddingApiKey: '',
-            embeddingModel: 'text-embedding-3-small',
-            llmProvider: 'openai',
-            llmApiKey: '',
-            llmModel: 'gpt-4o-mini'
+          llmConfig: {
+            provider,
+            apiKeys,
+            apiKey: apiKeys[provider] || '',
+            models,
+            model: models[provider] || (provider === 'deepseek' ? 'deepseek-v4-flash' : provider === 'openai' ? 'gpt-4o' : provider === 'dashscope' ? 'qwen-plus' : provider === 'local' ? 'llama3' : provider === 'custom' ? '' : 'gemini-1.5-pro'),
+            baseUrls,
+            baseUrl: baseUrls[provider] || '',
+            providerNotes: settings.providerNotes || {},
+            temperature: settings.temperature ?? 0.7,
+            isThinkingMode: settings.isThinkingMode ?? false,
+            reasoningEffort: settings.reasoningEffort || 'high',
           },
-          isPaintingEnabled: settings.isPaintingEnabled ?? false,
-          paintingProvider: settings.paintingProvider || 'jimeng',
-          paintingApiKey: settings.paintingApiKey || '',
-          quickGenerate: settings.quickGenerate ?? false,
+          uiConfig: {
+            theme: settings.theme || 'light',
+            globalTheme: settings.theme || 'light', // or globalTheme? keep fallback
+            bgImage: settings.bgImage || null,
+            bgImages: settings.bgImages || [],
+            bgImageInterval: settings.bgImageInterval || 300,
+            chatLayout: settings.chatLayout || 'default',
+            sendBehavior: settings.sendBehavior || 'enter',
+            userAvatar: settings.userAvatar || null,
+            aiAvatar: settings.aiAvatar || null,
+            userName: settings.userName || null,
+            aiName: settings.aiName || null,
+            showMessageMeta: settings.showMessageMeta ?? true
+          },
+          systemConfig: {
+            promptTemplates: settings.promptTemplates || [],
+            storyTemplates: settings.storyTemplates || [],
+            quickGenerate: settings.quickGenerate ?? false,
+          },
+          memoryConfig: {
+            useTieredMemory: settings.useTieredMemory ?? true,
+            memoryMode: settings.memoryMode || 'simple',
+            memorySummarizeFrequency: settings.memorySummarizeFrequency || 1,
+            recentHistoryRounds: settings.recentHistoryRounds || 5,
+            powermemConfig: settings.powermemConfig || {
+              useGlobalLLM: true,
+              embeddingProvider: 'openai',
+              embeddingApiKey: '',
+              embeddingModel: 'text-embedding-3-small',
+              llmProvider: 'openai',
+              llmApiKey: '',
+              llmModel: 'gpt-4o-mini'
+            },
+          },
+          paintingConfig: {
+            isPaintingEnabled: settings.isPaintingEnabled ?? false,
+            paintingProvider: settings.paintingProvider || 'zhipuai',
+            paintingModel: settings.paintingModel || 'cogview-3-plus',
+            paintingApiKey: settings.paintingApiKey || '',
+          }
         });
       }
     } catch (error) {
@@ -139,52 +247,19 @@ export const useSettingStore = create<SettingsState>((set, get) => ({
   },
 
   saveSettings: async (newSettings) => {
-    const currentState = get();
-    let updatedSettings = { ...currentState, ...newSettings };
-    
-    // Sync logic before saving
-    if (newSettings.provider || newSettings.apiKeys) {
-      updatedSettings.apiKey = updatedSettings.apiKeys[updatedSettings.provider] || '';
-    }
-    if (newSettings.apiKey !== undefined) {
-      updatedSettings.apiKeys = { ...updatedSettings.apiKeys, [updatedSettings.provider]: newSettings.apiKey };
-    }
-    if (newSettings.provider || newSettings.models) {
-      updatedSettings.model = updatedSettings.models[updatedSettings.provider] || (updatedSettings.provider === 'deepseek' ? 'deepseek-chat' : updatedSettings.provider === 'openai' ? 'gpt-4o' : updatedSettings.provider === 'anthropic' ? 'claude-3-5-sonnet-20240620' : updatedSettings.provider === 'custom' ? '' : 'gemini-1.5-pro');
-    }
-    if (newSettings.model !== undefined) {
-      updatedSettings.models = { ...updatedSettings.models, [updatedSettings.provider]: newSettings.model };
-    }
-    if (newSettings.provider || newSettings.baseUrls) {
-      updatedSettings.baseUrl = updatedSettings.baseUrls[updatedSettings.provider] || '';
-    }
-    if (newSettings.baseUrl !== undefined) {
-      updatedSettings.baseUrls = { ...updatedSettings.baseUrls, [updatedSettings.provider]: newSettings.baseUrl };
-    }
-
-    set(updatedSettings);
+    // saveSettings accepts the old flattened style settings from components since refactoring components fully for saveSettings takes too much time.
+    // Actually, saveSettings just defers to setSettings, then saves EVERYTHING to API in flat form.
+    get().setSettings(newSettings);
+    const store = get();
     
     try {
       await api.saveSettings({
-        provider: updatedSettings.provider,
-        apiKeys: updatedSettings.apiKeys,
-        apiKey: updatedSettings.apiKey, // Keep for backward compatibility
-        models: updatedSettings.models,
-        model: updatedSettings.model,
-        baseUrls: updatedSettings.baseUrls,
-        baseUrl: updatedSettings.baseUrl,
-        temperature: updatedSettings.temperature,
-        theme: updatedSettings.globalTheme, // Save global theme
-        bgImage: updatedSettings.bgImage,
-        promptTemplates: updatedSettings.promptTemplates,
-        storyTemplates: updatedSettings.storyTemplates,
-        useTieredMemory: updatedSettings.useTieredMemory,
-        powermemConfig: updatedSettings.powermemConfig,
-        isPaintingEnabled: updatedSettings.isPaintingEnabled,
-        paintingProvider: updatedSettings.paintingProvider,
-        paintingApiKey: updatedSettings.paintingApiKey,
-        quickGenerate: updatedSettings.quickGenerate
-      });
+        ...store.llmConfig,
+        ...store.uiConfig,
+        ...store.memoryConfig,
+        ...store.paintingConfig,
+        ...store.systemConfig
+      } as any);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }

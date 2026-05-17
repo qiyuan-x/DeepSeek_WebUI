@@ -1,20 +1,69 @@
 import express from "express";
-import { MemoryService } from "../memoryService.js";
+import { apiKeyMiddleware } from "../middleware/auth.js";
+import { ChatService } from "../services/ChatService.js";
+import { MemoryOrchestrator } from "../services/MemoryOrchestrator.js";
 import { LLMProviderFactory } from "../providers/llm/LLMProviderFactory.js";
 
 const router = express.Router();
 
-router.post("/test-connection", async (req, res) => {
-  const { provider, apiKey, model, baseUrl } = req.body;
-  if (!apiKey) return res.status(400).json({ error: "API Key required" });
+router.post("/test-embedding", apiKeyMiddleware, async (req, res) => {
+  const { provider, model } = req.body;
+  const apiKey = res.locals.apiKey;
+
+  try {
+    let url = "";
+    let data: any = {};
+    let headers: any = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    };
+
+    if (provider === 'openai') {
+      url = "https://api.openai.com/v1/embeddings";
+      data = { input: "hello", model: model || "text-embedding-3-small" };
+    } else if (provider === 'zhipuai') {
+      url = "https://open.bigmodel.cn/api/paas/v4/embeddings";
+      data = { input: "hello", model: model || "embedding-2" };
+    } else if (provider === 'dashscope') {
+      url = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding";
+      headers = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      };
+      data = { input: { texts: ["hello"] }, model: model || "text-embedding-v1" };
+    } else {
+      return res.status(400).json({ error: "Unsupported embedding provider for testing." });
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data)
+    });
+
+    if (response.ok) {
+      res.json({ success: true, message: "Connection successful!" });
+    } else {
+      const errorData = await response.text();
+      res.status(500).json({ error: `Connection failed: ${response.status} ${errorData}` });
+    }
+  } catch (error: any) {
+    console.error("Test Embedding Error:", error);
+    res.status(500).json({ error: error.message || "Failed to connect to the embedding provider." });
+  }
+});
+
+router.post("/test-connection", apiKeyMiddleware, async (req, res) => {
+  const { provider, model, baseUrl } = req.body;
+  const apiKey = res.locals.apiKey;
 
   try {
     const llmProvider = LLMProviderFactory.getProvider(provider || 'deepseek', baseUrl);
     const messages = [{ role: 'user' as const, content: 'Say strictly "ok" and nothing else.' }];
-    const options = { model: model || 'deepseek-chat', temperature: 0, max_tokens: 10 };
+    const options = { model: model || 'deepseek-v4-flash', temperature: 0, max_tokens: 150, isThinkingMode: false };
     
     // Test the provider
-    const content = await llmProvider.chat(messages, options, apiKey);
+    const { content } = await llmProvider.chat(messages, options, apiKey);
     
     if (content && content.trim().length > 0) {
       res.json({ success: true, message: "Connection successful!" });
@@ -27,78 +76,67 @@ router.post("/test-connection", async (req, res) => {
   }
 });
 
-router.post("/chat", async (req, res) => {
-  const { messages, systemPrompt, model, temperature, stream, apiKey: userApiKey, provider, stream_options, useTieredMemory, skipMemoryIngest, conversationId, conversationName } = req.body;
-  const apiKey = (userApiKey !== undefined && userApiKey !== null) ? userApiKey : process.env.DEEPSEEK_API_KEY;
-
-  if (!apiKey) return res.status(400).json({ error: "API Key required" });
+router.get("/models", apiKeyMiddleware, async (req, res) => {
+  const { provider, baseUrl } = req.query;
+  const apiKey = res.locals.apiKey;
+  if (!provider || typeof provider !== 'string') return res.status(400).json({ error: "Provider required" });
 
   try {
-    let finalMessages = [...messages];
+    let url = "";
+    if (['openai', 'custom', 'deepseek', 'zhipuai', 'dashscope', 'local'].includes(provider)) {
+      const defaultBaseUrl = provider === 'deepseek' ? 'https://api.deepseek.com/v1' 
+        : provider === 'zhipuai' ? 'https://open.bigmodel.cn/api/paas/v4'
+        : provider === 'dashscope' ? 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+        : provider === 'local' ? 'http://127.0.0.1:11434/v1'
+        : 'https://api.openai.com/v1';
+      url = typeof baseUrl === 'string' && baseUrl.trim().length > 0 ? `${baseUrl.replace(/\/chat\/completions$/, '')}/models` : `${defaultBaseUrl}/models`;
+    } else {
+      return res.status(400).json({ error: "Model listing not supported natively here for this provider." });
+    }
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
     
-    // Inject system prompt if provided
-    if (systemPrompt) {
-      finalMessages.unshift({ role: 'system', content: systemPrompt });
+    if (!response.ok) {
+       throw new Error(`Failed to fetch models: ${response.statusText}`);
     }
-
-    let lastUserMsg = messages.filter((m: any) => m.role === 'user').pop();
-
-    let memoryUsage: any = null;
-
-    const llmProvider = LLMProviderFactory.getProvider(provider || 'deepseek');
-    const selectedModel = model || (provider === 'deepseek' ? 'deepseek-chat' : provider === 'openai' ? 'gpt-4o' : provider === 'anthropic' ? 'claude-3-5-sonnet-20240620' : 'gemini-1.5-pro');
-
-    if (useTieredMemory && lastUserMsg && conversationId) {
-      // 1. Retrieval
-      const { context: memoryContext, usage: retrieveUsage } = await MemoryService.retrieve(lastUserMsg.content, llmProvider, apiKey, selectedModel, conversationId);
-      if (retrieveUsage) {
-        memoryUsage = { retrieve: retrieveUsage };
-      }
-      
-      if (memoryContext.trim()) {
-        // Find system message or add one
-        const sysIdx = finalMessages.findIndex((m: any) => m.role === 'system');
-        const factPrompt = `\n\n=== 附加背景信息 ===\n以下是关于用户和历史对话的记忆，请在回答时作为参考（但必须优先遵循上述的人物设定）：\n${memoryContext.trim()}`;
-        if (sysIdx !== -1) {
-          finalMessages[sysIdx].content += factPrompt;
-        } else {
-          finalMessages.unshift({ role: 'system', content: `你是一个助手。${factPrompt}` });
-        }
-      }
-
-      // 3. Short-term memory (keep only last 5 rounds + system prompt)
-      const systemMsgs = finalMessages.filter((m: any) => m.role === 'system');
-      const otherMsgs = finalMessages.filter((m: any) => m.role !== 'system');
-      let recentMsgs = otherMsgs.slice(-10); // 5 rounds = 10 messages
-      
-      // Ensure the first message after system is a user message
-      if (recentMsgs.length > 0 && recentMsgs[0].role !== 'user') {
-        recentMsgs.shift();
-      }
-      
-      finalMessages = [...systemMsgs, ...recentMsgs];
+    
+    const data = await response.json();
+    if (data && data.data && Array.isArray(data.data)) {
+       let modelIds = data.data.map((m: any) => m.id).filter(Boolean);
+       if (provider === 'zhipuai' && !modelIds.includes('glm-4-flash')) {
+         modelIds.unshift('glm-4-flash');
+       }
+       return res.json({ models: modelIds });
     }
+    
+    return res.json({ models: [] });
+  } catch (error: any) {
+    console.error("Fetch Models Error:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch models." });
+  }
+});
 
-    // Add a strong reminder to the last user message to strictly follow the system prompt
-    // This prevents the AI from being biased by its own previous replies in the chat history
-    const sysMsg = finalMessages.find((m: any) => m.role === 'system');
-    if (sysMsg && sysMsg.content) {
-      const lastMsgIdx = finalMessages.length - 1;
-      if (lastMsgIdx >= 0 && finalMessages[lastMsgIdx].role === 'user') {
-        // Extract the original system prompt (without the memory context)
-        const originalSysPrompt = sysMsg.content.split('\n\n=== 附加背景信息 ===')[0].trim();
-        if (originalSysPrompt && originalSysPrompt !== '你是一个助手。') {
-          finalMessages[lastMsgIdx].content += `\n\n[系统提示：请严格遵循你的人物设定：“${originalSysPrompt}”，不要受历史对话风格的影响。]`;
-        }
-      }
-    }
+router.post("/chat", apiKeyMiddleware, async (req, res) => {
+  const { messages, systemPrompt, model, temperature, stream, provider, baseUrl, stream_options, useTieredMemory, memoryMode, memorySummarizeFrequency, skipMemoryIngest, conversationId, conversationName, isThinkingMode, reasoningEffort, totalUserRounds } = req.body;
+  const apiKey = res.locals.apiKey;
+
+  try {
+    const { finalMessages, selectedModel, llmProvider, effectiveMemoryMode, lastUserMsg, memoryUsage } = 
+      await ChatService.generateContextAndResponse(
+        messages, systemPrompt, model, temperature, provider, baseUrl, isThinkingMode, reasoningEffort,
+        conversationId, conversationName, memoryMode, useTieredMemory, apiKey
+      );
 
     const options = {
       model: selectedModel,
       temperature,
       stream,
       max_tokens: 8192,
-      stream_options: stream_options || { include_usage: true }
+      stream_options: stream_options || { include_usage: true },
+      isThinkingMode,
+      reasoningEffort
     };
 
     console.log(`Sending to ${selectedModel} API:`, JSON.stringify(finalMessages, null, 2));
@@ -110,62 +148,49 @@ router.post("/chat", async (req, res) => {
 
       let fullResponse = "";
       
+      const keepAliveInterval = setInterval(() => {
+        res.write(':\n\n');
+      }, 15000);
+
       try {
         await llmProvider.streamChat(
           finalMessages,
           options,
           apiKey,
-          (chunk) => {
+          (chunk, reasoningChunk) => {
             fullResponse += chunk;
-            res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}\n\n`);
+            const delta: any = {};
+            if (chunk) delta.content = chunk;
+            if (reasoningChunk) delta.reasoning_content = reasoningChunk;
+            res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`);
           },
           (usage) => {
             res.write(`data: ${JSON.stringify({ usage })}\n\n`);
           }
         );
         
-        // 3. Ingest (Async)
-        if (useTieredMemory && !skipMemoryIngest && lastUserMsg && fullResponse) {
-          const round = Math.ceil(messages.length / 2);
-          console.log("Ingesting memory:", lastUserMsg.content, "=>", fullResponse.substring(0, 50) + "...");
-          
-          // Fire and forget to avoid blocking the stream
-          MemoryService.ingest(lastUserMsg.content, fullResponse, llmProvider, apiKey, selectedModel, conversationId, conversationName, round)
-            .catch(err => console.error("Ingest error:", err));
-            
-          if (memoryUsage) {
-            res.write(`data: ${JSON.stringify({ memory_usage: memoryUsage })}\n\n`);
-          }
-        } else if (useTieredMemory && skipMemoryIngest && memoryUsage) {
-          // If we skipped ingest but still have retrieve usage, send it
+        clearInterval(keepAliveInterval);
+
+        // Memory Ingestion will be triggered by frontend calling /api/memories/ingest
+        
+        if (memoryUsage) {
           res.write(`data: ${JSON.stringify({ memory_usage: memoryUsage })}\n\n`);
         }
-
         res.write('data: [DONE]\n\n');
         res.end();
 
       } catch (error: any) {
+        clearInterval(keepAliveInterval);
         console.error("Stream Error:", error);
         res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
         res.end();
       }
     } else {
       try {
-        const content = await llmProvider.chat(finalMessages, options, apiKey);
-        const data: any = { choices: [{ message: { content } }] };
+        const { content, usage } = await llmProvider.chat(finalMessages, options, apiKey);
+        const data: any = { choices: [{ message: { content } }], usage };
         
-        // Async Memory Ingestion
-        if (useTieredMemory && !skipMemoryIngest && lastUserMsg) {
-          const round = Math.ceil(messages.length / 2);
-          MemoryService.ingest(lastUserMsg.content, content, llmProvider, apiKey, selectedModel, conversationId, conversationName, round)
-            .then(ingestUsage => {
-              if (ingestUsage) {
-                memoryUsage = memoryUsage || {};
-                memoryUsage.ingest = ingestUsage;
-              }
-            })
-            .catch(e => console.error("Async ingest failed:", e));
-        }
+        // Memory Ingestion will be triggered by frontend calling /api/memories/ingest
 
         if (memoryUsage) {
           data.memory_usage = memoryUsage;

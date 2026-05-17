@@ -1,7 +1,9 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
-import { SETTINGS_FILE } from "../config.js";
+import { DATA_DIR, SETTINGS_FILE } from "../config.js";
+import { apiKeyMiddleware } from "../middleware/auth.js";
+import { powerMem } from "../powermem.js";
 
 const router = express.Router();
 
@@ -25,7 +27,7 @@ router.post("/settings", (req, res) => {
 
     // Update .env file if powermemConfig is present
     if (settings.powermemConfig) {
-      const envPath = path.resolve(process.cwd(), ".env");
+      const envPath = path.join(DATA_DIR, ".env");
       let envContent = "";
       if (fs.existsSync(envPath)) {
         envContent = fs.readFileSync(envPath, "utf-8");
@@ -53,7 +55,20 @@ router.post("/settings", (req, res) => {
       if (llmApiKey) updateEnv("LLM_API_KEY", llmApiKey);
       if (llmModel) updateEnv("LLM_MODEL", llmModel);
 
-      fs.writeFileSync(envPath, envContent.trim() + "\n");
+      const newEnvContent = envContent.trim() + "\n";
+      
+      let originalEnvContent = "";
+      if (fs.existsSync(envPath)) {
+         originalEnvContent = fs.readFileSync(envPath, "utf-8");
+      }
+
+      if (newEnvContent !== originalEnvContent) {
+        fs.writeFileSync(envPath, newEnvContent);
+        console.log(".env file updated based on new powermemConfig settings.");
+        
+        // Re-initialize powermem
+        powerMem.reinit().catch(e => console.error("Failed to reinit powermem after settings change:", e));
+      }
     }
 
     res.json({ success: true });
@@ -62,10 +77,8 @@ router.post("/settings", (req, res) => {
   }
 });
 
-router.get("/balance", async (req, res) => {
-  const apiKey = req.headers["x-deepseek-api-key"] || process.env.DEEPSEEK_API_KEY;
-  
-  if (!apiKey) return res.status(400).json({ error: "API Key required" });
+router.get("/balance", apiKeyMiddleware, async (req, res) => {
+  const apiKey = res.locals.apiKey;
 
   try {
     const response = await fetch("https://api.deepseek.com/user/balance", {

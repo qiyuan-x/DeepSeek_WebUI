@@ -1,0 +1,90 @@
+const fs = require('fs');
+let text = fs.readFileSync('src/components/SettingsModal.tsx', 'utf8');
+
+const target = `                            <section className="space-y-1">
+                               <div className="flex items-center justify-between">
+                                 <label className="text-xs font-bold text-[#6B7280] dark:text-gray-400">思考强度 (Reasoning Effort)</label>
+                               </div>
+                               <div className="pt-2">
+                                  <select 
+                                     value={tempSettings.reasoningEffort} 
+                                     onChange={e => setTempSettings(prev => ({ ...prev, reasoningEffort: e.target.value as 'high' | 'max' }))}
+                                     className={cn("w-full border rounded-lg px-3 py-2 text-sm outline-none transition-colors appearance-none bg-no-repeat", theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:border-white/30" : "bg-white border-gray-200 focus:border-gray-400")}
+                                     style={{ backgroundImage: \`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")\`, backgroundPosition: \`right 0.5rem center\`, backgroundSize: \`1em\` }}
+                                   >
+                                     <option value="high" className={theme === 'dark' ? "bg-[#25262B]" : "bg-white"}>high (高)</option>
+                                     <option value="max" className={theme === 'dark' ? "bg-[#25262B]" : "bg-white"}>max (最高)</option>
+                                  </select>
+                                  <p className="mt-1 text-[11px] text-gray-400">设置思考模式开启时，模型的思考强度。默认 high，复杂需求可选 max（仅部分 API 格式支持）。</p>
+                               </div>
+                            </section>
+                             )}
+                            
+                            <section className="space-y-1">
+                               <div className="flex items-center justify-between">
+                                 <label className="text-xs font-bold text-[#6B7280] dark:text-gray-400">后台任务思考模式 (Background Reasoning)</label>
+                               </div>
+                               <div className="pt-2">
+                                  <label className="relative inline-flex items-center cursor-pointer mb-2">
+                                    <input 
+                                      type="checkbox" 
+                                      className="sr-only peer"
+                                      checked={tempSettings.isBackgroundReasoningEnabled ?? false}
+                                      onChange={e => setTempSettings(prev => ({ ...prev, isBackgroundReasoningEnabled: e.target.checked }))}
+                                    />
+                                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-white/10 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                    <span className="ml-3 text-sm font-medium">启用后台思考</span>
+                                  </label>
+                                  <p className="mt-1 text-[11px] text-gray-400">在生成记忆总结、提取绘画提示词时开启大模型的思考过程。开启后生成的质量更好但也更耗时且贵（需模型本身支持思考模式）。</p>
+                               </div>
+                            </section>
+                             )}`;
+
+const replaced = `                            {editingProvider === 'deepseek' && (
+                            <section className="space-y-1">
+                               <div className="flex items-center justify-between">
+                                 <label className="text-xs font-bold text-[#6B7280] dark:text-gray-400">思考强度 (Reasoning Effort)</label>
+                               </div>
+                               <div className="pt-2">
+                                  <select 
+                                     value={tempSettings.reasoningEffort} 
+                                     onChange={e => setTempSettings(prev => ({ ...prev, reasoningEffort: e.target.value as 'high' | 'max' }))}
+                                     className={cn("w-full border rounded-lg px-3 py-2 text-sm outline-none transition-colors appearance-none bg-no-repeat", theme === 'dark' ? "bg-white/5 border-white/10 text-white focus:border-white/30" : "bg-white border-gray-200 focus:border-gray-400")}
+                                     style={{ backgroundImage: \`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")\`, backgroundPosition: \`right 0.5rem center\`, backgroundSize: \`1em\` }}
+                                   >
+                                     <option value="high" className={theme === 'dark' ? "bg-[#25262B]" : "bg-white"}>high (高)</option>
+                                     <option value="max" className={theme === 'dark' ? "bg-[#25262B]" : "bg-white"}>max (最高)</option>
+                                  </select>
+                                  <p className="mt-1 text-[11px] text-gray-400">设置思考模式开启时，模型的思考强度。默认 high，复杂需求可选 max（仅部分 API 格式支持）。</p>
+                               </div>
+                            </section>
+                            )}
+                            
+                            {editingProvider === 'deepseek' && (
+                            <section className="space-y-1">
+                               <div className="flex items-center justify-between">
+                                 <label className="text-xs font-bold text-[#6B7280] dark:text-gray-400">后台任务思考模式 (Background Reasoning)</label>
+                               </div>
+                               <div className="pt-2">
+                                  <label className="relative inline-flex items-center cursor-pointer mb-2">
+                                    <input 
+                                      type="checkbox" 
+                                      className="sr-only peer"
+                                      checked={tempSettings.isBackgroundReasoningEnabled ?? false}
+                                      onChange={e => setTempSettings(prev => ({ ...prev, isBackgroundReasoningEnabled: e.target.checked }))}
+                                    />
+                                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-white/10 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                    <span className="ml-3 text-sm font-medium">启用后台思考</span>
+                                  </label>
+                                  <p className="mt-1 text-[11px] text-gray-400">在生成记忆总结、提取绘画提示词时开启大模型的思考过程，部分 API 可能会增加 Token 费用。</p>
+                               </div>
+                            </section>
+                            )}`;
+
+if (text.includes(target)) {
+  fs.writeFileSync('src/components/SettingsModal.tsx', text.replace(target, replaced));
+  console.log("Success");
+} else {
+  console.log("Failed to find exact match");
+}
+

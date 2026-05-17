@@ -1,102 +1,77 @@
+import OpenAI from "openai";
 import { ILLMProvider } from './ILLMProvider.js';
 
 export class OpenAIProvider implements ILLMProvider {
   private baseUrl: string;
 
-  constructor(baseUrl: string = 'https://api.openai.com/v1/chat/completions') {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl: string = 'https://api.openai.com/v1') {
+    this.baseUrl = baseUrl.replace(/\/chat\/completions$/, '');
   }
 
-  async chat(messages: any[], options: any, apiKey: string): Promise<string> {
-    const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: options.model || 'gpt-4o',
-        messages,
-        temperature: options.temperature,
-        max_tokens: options.max_tokens,
-      })
-    });
+  async chat(messages: any[], options: any, apiKey: string): Promise<{ content: string, usage?: any }> {
+    const openai = new OpenAI({ apiKey, baseURL: this.baseUrl });
+    
+    const requestBody: any = {
+      model: options.model || 'gpt-4o',
+      messages: messages as any,
+      temperature: options.temperature,
+      max_tokens: options.max_tokens,
+      response_format: options.response_format
+    };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenAI API Error: ${response.status} ${errorText}`);
+    if (options.isThinkingMode !== undefined) {
+      if (options.isThinkingMode) {
+        requestBody.thinking = { type: "enabled" };
+        requestBody.reasoning_effort = options.reasoningEffort || "high";
+      } else if (options.model && typeof options.model === 'string' && options.model.toLowerCase().includes('deepseek')) {
+        requestBody.thinking = { type: "disabled" };
+      }
     }
 
-    const data = await response.json();
-    return data.choices[0].message.content;
+    const response = await openai.chat.completions.create(requestBody);
+    const message = response.choices[0].message as any;
+    const content = message.content || message.reasoning_content || "";
+    return { content, usage: response.usage };
   }
 
   async streamChat(
     messages: any[],
     options: any,
     apiKey: string,
-    onChunk: (chunk: string) => void,
+    onChunk: (chunk: string, reasoningChunk?: string | null) => void,
     onUsage?: (usage: any) => void
   ): Promise<void> {
-    const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: options.model || 'gpt-4o',
-        messages,
-        temperature: options.temperature,
-        max_tokens: options.max_tokens,
-        stream: true,
-        stream_options: options.stream_options
-      })
-    });
+    const openai = new OpenAI({ apiKey, baseURL: this.baseUrl });
+    
+    const requestBody: any = {
+      model: options.model || 'gpt-4o',
+      messages: messages as any,
+      temperature: options.temperature,
+      max_tokens: options.max_tokens,
+      stream: true,
+      stream_options: options.stream_options
+    };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenAI API Error: ${response.status} ${errorText}`);
+    if (options.isThinkingMode !== undefined) {
+      if (options.isThinkingMode) {
+        requestBody.thinking = { type: "enabled" };
+        requestBody.reasoning_effort = options.reasoningEffort || "high";
+      } else if (options.model && typeof options.model === 'string' && options.model.toLowerCase().includes('deepseek')) {
+        requestBody.thinking = { type: "disabled" };
+      }
     }
 
-    if (!response.body) {
-      throw new Error("No response body");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (line.trim() === "") continue;
-        if (line.startsWith("data: ")) {
-          const dataStr = line.slice(6).trim();
-          if (dataStr === "[DONE]") continue;
-
-          try {
-            const data = JSON.parse(dataStr);
-            if (data.usage && onUsage) {
-              onUsage(data.usage);
-            }
-            if (data.choices && data.choices.length > 0) {
-              const delta = data.choices[0].delta;
-              if (delta.content) {
-                onChunk(delta.content);
-              }
-            }
-          } catch (e) {
-            console.error("Error parsing stream data:", e, dataStr);
-          }
-        }
+    const stream = await openai.chat.completions.create(requestBody) as any;
+    
+    for await (const chunk of stream) {
+      if (chunk.usage && onUsage) {
+        onUsage(chunk.usage);
+      }
+      const delta = chunk.choices?.[0]?.delta as any;
+      if (delta && (delta.content || delta.reasoning_content)) {
+        onChunk(delta.content || '', delta.reasoning_content || null);
       }
     }
   }
 }
+
